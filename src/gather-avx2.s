@@ -4,6 +4,9 @@
 SCALAR:
 .double 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
 
+# rdi -> a
+# rsi -> idx
+# rdx -> N
 .text
 .globl gather
 .type gather, @function
@@ -19,16 +22,25 @@ push r15
 xor   rax, rax
 .align 16
 1:
-vmovaps ymm1, [rdx + rax*8]
-vmovaps ymm2, [rdx + rax*8+32]
-vmovaps ymm3, [rdx + rax*8+64]
-vmovaps ymm4, [rdx + rax*8+96]
-vaddpd  ymm1, ymm1, [rdx + rax*8]
-vaddpd  ymm2, ymm2, [rdx + rax*8+32]
-vaddpd  ymm3, ymm3, [rdx + rax*8+64]
-vaddpd  ymm4, ymm4, [rdx + rax*8+96]
-addq rax, 16
-cmpq rax, rdi
+vpcmpeqb k1, xmm0, xmm0
+vpcmpeqb k2, xmm0, xmm0
+vpcmpeqb k3, xmm0, xmm0
+vpcmpeqb k4, xmm0, xmm0
+vmovdqu ymm0, [rsi + rax*4]
+vmovdqu ymm1, [rsi + rax*4+32]
+vmovdqu ymm2, [rsi + rax*4+64]
+vmovdqu ymm3, [rsi + rax*4+96]
+vpxord zmm4, zmm4, zmm4
+vpxord zmm5, zmm5, zmm5
+vpxord zmm6, zmm6, zmm6
+vpxord zmm7, zmm7, zmm7
+vgatherdpd zmm4{k1}, [rdi + ymm0*8]
+vgatherdpd zmm5{k2}, [rdi + ymm1*8]
+vgatherdpd zmm6{k3}, [rdi + ymm2*8]
+vgatherdpd zmm7{k4}, [rdi + ymm3*8]
+
+addq rax, 32
+cmpq rax, rdx
 jl 1b
 
 pop r15
