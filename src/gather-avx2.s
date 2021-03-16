@@ -7,6 +7,7 @@ SCALAR:
 # rdi -> a
 # rsi -> idx
 # rdx -> N
+# rcx -> t
 .text
 .globl gather
 .type gather, @function
@@ -38,6 +39,12 @@ vgatherdpd zmm4{k1}, [rdi + ymm0*8]
 vgatherdpd zmm5{k2}, [rdi + ymm1*8]
 vgatherdpd zmm6{k3}, [rdi + ymm2*8]
 vgatherdpd zmm7{k4}, [rdi + ymm3*8]
+
+# Required for test
+#vmovapd [rcx + rax*8],     zmm4
+#vmovapd [rcx + rax*8+64],  zmm5
+#vmovapd [rcx + rax*8+128], zmm6
+#vmovapd [rcx + rax*8+192], zmm7
 
 addq rax, 32
 cmpq rax, rdx

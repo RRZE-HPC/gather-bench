@@ -49,7 +49,13 @@
 #define SIZE  20000
 #define _VL_  4
 
+//#define TEST
+
+#ifdef TEST
+extern void gather(double*, int*, int, double*);
+#else
 extern void gather(double*, int*, int);
+#endif
 
 int main (int argc, char** argv) {
     size_t bytesPerWord = sizeof(double);
@@ -72,6 +78,7 @@ int main (int argc, char** argv) {
     for(int N = 500; N < 480000; N = 1.2 * N) {
         int N_alloc = N * 2;
         double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(double) );
+        double* t = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(double) );
         int* idx = (int*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(int) );
         int rep;
         double time;
@@ -83,7 +90,11 @@ int main (int argc, char** argv) {
 
         S = getTimeStamp();
         for(int r = 0; r < 100; ++r) {
+#ifdef TEST
+            gather(a, idx, N, t);
+#else
             gather(a, idx, N);
+#endif
         }
         E = getTimeStamp();
 
@@ -91,13 +102,36 @@ int main (int argc, char** argv) {
 
         S = getTimeStamp();
         for(int r = 0; r < rep; ++r) {
+#ifdef TEST
+            gather(a, idx, N, t);
+#else
             gather(a, idx, N);
+#endif
         }
         E = getTimeStamp();
 
         time = E - S;
+
+#ifdef TEST
+        int test_failed = 0;
+        for(int i = 0; i < N; ++i) {
+            if(t[i] != i * stride % N) {
+                test_failed = 1;
+                break;
+            }
+        }
+
+        if(test_failed) {
+            printf("Test failed!\n");
+            return EXIT_FAILURE;
+        } else {
+            printf("Test passed!\n");
+        }
+#endif
+
         printf("%14d, %14.2f, %14.10f, %14.10f, %14.6f, %14.6f\n", N, N*(sizeof(double)+sizeof(int))/(1000.0), time, time*1e6/((double)N*rep), time*freq/((double)N*rep), time*freq*_VL_/((double)N*rep));
         free(a);
+        free(t);
         free(idx);
     }
 
