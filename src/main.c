@@ -51,9 +51,7 @@
 
 extern void gather(double*, int*, int);
 
-
-int main (int argc, char** argv)
-{
+int main (int argc, char** argv) {
     size_t bytesPerWord = sizeof(double);
     size_t N = SIZE;
     double E, S;
@@ -63,20 +61,45 @@ int main (int argc, char** argv)
         printf("%s <stride> <freq (GHz)>\n", argv[0]);
         return -1;
     }
+
     int stride = atoi(argv[1]);
     double freq = atof(argv[2]);
     printf("stride = %d, freq = %f GHz\n", stride, freq);
     freq = freq * 1e9;
 
     printf("Vector length of %d assumed\n", _VL_);
-    double* a = (double*) allocate( ARRAY_ALIGNMENT, N * sizeof(double) );
-    int* idx = (int*) allocate( ARRAY_ALIGNMENT, N * sizeof(int) );
+    printf("#%13s, %14s, %14s, %14s, %14s, %14s\n", "N", "Size(kB)", "tot. time", "time/LUP(ms)", "cy/it", "cy/gather");
+    for(int N = 500; N < 480000; N = 1.2 * N) {
+        int N_alloc = N * 2;
+        double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(double) );
+        int* idx = (int*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(int) );
+        int rep;
+        double time;
 
-    S = getTimeStamp();
-    gather(a, idx, N);
-    E = getTimeStamp();
+        for(int i = 0; i < N_alloc; ++i) {
+            a[i] = i;
+            idx[i] = (i * stride) % N;
+        }
 
-    printf("Runtime %f\n",E-S);
+        S = getTimeStamp();
+        for(int r = 0; r < 100; ++r) {
+            gather(a, idx, N);
+        }
+        E = getTimeStamp();
+
+        rep = 100 * (0.5 / (E - S));
+
+        S = getTimeStamp();
+        for(int r = 0; r < rep; ++r) {
+            gather(a, idx, N);
+        }
+        E = getTimeStamp();
+
+        time = E - S;
+        printf("%14d, %14.2f, %14.10f, %14.10f, %14.6f, %14.6f\n", N, N*(sizeof(double)+sizeof(int))/(1000.0), time, time*1e6/((double)N*rep), time*freq/((double)N*rep), time*freq*_VL_/((double)N*rep));
+        free(a);
+        free(idx);
+    }
 
     return EXIT_SUCCESS;
 }
