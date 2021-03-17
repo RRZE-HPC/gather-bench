@@ -1,17 +1,19 @@
 TAG = GCC
+ISA = avx2
 
 #CONFIGURE BUILD SYSTEM
 TARGET	   = gather-bench-$(TAG)
 BUILD_DIR  = ./$(TAG)
 SRC_DIR    = ./src
 MAKE_DIR   = ./
+ISA_DIR    = ./src/$(ISA)
 Q         ?= @
 
 #DO NOT EDIT BELOW
 include $(MAKE_DIR)/include_$(TAG).mk
 INCLUDES  += -I./src/includes
 
-VPATH     = $(SRC_DIR)
+VPATH     = $(SRC_DIR) ${ISA_DIR}
 ASM       = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.s,$(wildcard $(SRC_DIR)/*.c))
 ASM      += $(patsubst $(SRC_DIR)/%.f90, $(BUILD_DIR)/%.s,$(wildcard $(SRC_DIR)/*.f90))
 OBJ       = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.c))
@@ -20,6 +22,7 @@ OBJ      += $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/
 OBJ      += $(patsubst $(SRC_DIR)/%.f90, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.f90))
 OBJ      += $(patsubst $(SRC_DIR)/%.F90, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.F90))
 OBJ      += $(patsubst $(SRC_DIR)/%.s, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.s))
+OBJ      += $(patsubst $(ISA_DIR)/%.s, $(BUILD_DIR)/%.o,$(wildcard $(ISA_DIR)/*.s))
 CPPFLAGS := $(CPPFLAGS) $(DEFINES) $(INCLUDES)
 
 
