@@ -78,10 +78,13 @@ int main (int argc, char** argv) {
     for(int N = 500; N < 480000; N = 1.2 * N) {
         int N_alloc = N * 2;
         double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(double) );
-        double* t = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(double) );
         int* idx = (int*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(int) );
         int rep;
         double time;
+
+#ifdef TEST
+        double* t = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(double) );
+#endif
 
         for(int i = 0; i < N_alloc; ++i) {
             a[i] = i;
@@ -131,8 +134,10 @@ int main (int argc, char** argv) {
 
         printf("%14d, %14.2f, %14.10f, %14.10f, %14.6f, %14.6f\n", N, N*(sizeof(double)+sizeof(int))/(1000.0), time, time*1e6/((double)N*rep), time*freq/((double)N*rep), time*freq*_VL_/((double)N*rep));
         free(a);
-        free(t);
         free(idx);
+#ifdef TEST
+        free(t);
+#endif
     }
 
     return EXIT_SUCCESS;
