@@ -67,24 +67,27 @@ extern void gather(double*, int*, int);
 #endif
 
 int main (int argc, char** argv) {
-    size_t bytesPerWord = sizeof(double);
-    size_t N = SIZE;
-    double E, S;
-
     if (argc < 3) {
         printf("Please provide stride and frequency\n");
-        printf("%s <stride> <freq (GHz)>\n", argv[0]);
+        printf("%s <stride> <freq (GHz)> [cache line size (B)]\n", argv[0]);
         return -1;
     }
 
     int stride = atoi(argv[1]);
     double freq = atof(argv[2]);
-    printf("stride = %d, freq = %f GHz\n", stride, freq);
+    int cl_size = (argc == 3) ? 64 : atoi(argv[3]);
+    size_t bytesPerWord = sizeof(double);
+    size_t cacheLinesPerGather = MIN(MAX(stride * _VL_ / (cl_size / sizeof(double)), 1), _VL_);
+    size_t N = SIZE;
+    double E, S;
+
+    printf("stride = %d, freq = %f GHz, cl_size = %dB\n", stride, freq, cl_size);
     freq = freq * 1e9;
 
     printf("Vector length of %d assumed\n", _VL_);
-    printf("#%13s, %14s, %14s, %14s, %14s, %14s\n", "N", "Size(kB)", "tot. time", "time/LUP(ms)", "cy/it", "cy/gather");
-    for(int N = 500; N < 480000; N = 1.2 * N) {
+    printf("Accessing %lu cache line(s) per gather\n", cacheLinesPerGather);
+    printf("#%13s, %14s, %14s, %14s, %14s, %14s\n", "N", "Size(kB)", "tot. time", "time/LUP(ms)", "cy/gather", "cy/elem");
+    for(int N = 1024; N < 400000; N = 1.5 * N) {
         int N_alloc = N * 2;
         double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(double) );
         int* idx = (int*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(int) );
@@ -142,9 +145,9 @@ int main (int argc, char** argv) {
 
         const double size = N * (sizeof(double) + sizeof(int)) / 1000.0;
         const double time_per_it = time * 1e6 / ((double) N * rep);
-        const double cy_per_it = time * freq / ((double) N * rep);
-        const double cy_per_gather = time * freq * _VL_ / ((double) N * rep);
-        printf("%14d, %14.2f, %14.10f, %14.10f, %14.6f, %14.6f\n", N, size, time, time_per_it, cy_per_it, cy_per_gather);
+        const double cy_per_gather = time * freq / ((double) N * rep);
+        const double cy_per_elem = time * freq * _VL_ / ((double) N * rep);
+        printf("%14d, %14.2f, %14.10f, %14.10f, %14.6f, %14.6f\n", N, size, time, time_per_it, cy_per_gather, cy_per_elem);
         free(a);
         free(idx);
 #ifdef TEST
