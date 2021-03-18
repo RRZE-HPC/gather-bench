@@ -146,7 +146,7 @@ int main (int argc, char** argv) {
         const double size = N * (sizeof(double) + sizeof(int)) / 1000.0;
         const double time_per_it = time * 1e6 / ((double) N * rep);
         const double cy_per_gather = time * freq / ((double) N * rep);
-        const double cy_per_elem = time * freq * _VL_ / ((double) N * rep);
+        const double cy_per_elem = cy_per_gather / _VL_;
         printf("%14d, %14.2f, %14.10f, %14.10f, %14.6f, %14.6f\n", N, size, time, time_per_it, cy_per_gather, cy_per_elem);
         free(a);
         free(idx);
