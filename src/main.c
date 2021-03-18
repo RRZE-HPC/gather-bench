@@ -33,6 +33,10 @@
 #include <timing.h>
 #include <allocate.h>
 
+#if !defined(ISA_avx2) && !defined (ISA_avx512)
+#error "Invalid ISA macro, possible values are: avx2 and avx512"
+#endif
+
 #define HLINE "----------------------------------------------------------------------------\n"
 
 #ifndef MIN
@@ -47,7 +51,12 @@
 
 #define ARRAY_ALIGNMENT  64
 #define SIZE  20000
+
+#ifdef ISA_avx512
+#define _VL_  8
+#else
 #define _VL_  4
+#endif
 
 //#define TEST
 
@@ -102,7 +111,6 @@ int main (int argc, char** argv) {
         E = getTimeStamp();
 
         rep = 100 * (0.5 / (E - S));
-
         S = getTimeStamp();
         for(int r = 0; r < rep; ++r) {
 #ifdef TEST
@@ -132,7 +140,11 @@ int main (int argc, char** argv) {
         }
 #endif
 
-        printf("%14d, %14.2f, %14.10f, %14.10f, %14.6f, %14.6f\n", N, N*(sizeof(double)+sizeof(int))/(1000.0), time, time*1e6/((double)N*rep), time*freq/((double)N*rep), time*freq*_VL_/((double)N*rep));
+        const double size = N * (sizeof(double) + sizeof(int)) / 1000.0;
+        const double time_per_it = time * 1e6 / ((double) N * rep);
+        const double cy_per_it = time * freq / ((double) N * rep);
+        const double cy_per_gather = time * freq * _VL_ / ((double) N * rep);
+        printf("%14d, %14.2f, %14.10f, %14.10f, %14.6f, %14.6f\n", N, size, time, time_per_it, cy_per_it, cy_per_gather);
         free(a);
         free(idx);
 #ifdef TEST

@@ -1,5 +1,5 @@
 TAG = GCC
-ISA = avx2
+ISA = avx512
 
 #CONFIGURE BUILD SYSTEM
 TARGET	   = gather-bench-$(TAG)
@@ -23,7 +23,7 @@ OBJ      += $(patsubst $(SRC_DIR)/%.f90, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/
 OBJ      += $(patsubst $(SRC_DIR)/%.F90, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.F90))
 OBJ      += $(patsubst $(SRC_DIR)/%.s, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.s))
 OBJ      += $(patsubst $(ISA_DIR)/%.s, $(BUILD_DIR)/%.o,$(wildcard $(ISA_DIR)/*.s))
-CPPFLAGS := $(CPPFLAGS) $(DEFINES) $(INCLUDES)
+CPPFLAGS := $(CPPFLAGS) $(DEFINES) $(INCLUDES) -DISA_$(ISA)
 
 
 ${TARGET}: $(BUILD_DIR) $(OBJ)
