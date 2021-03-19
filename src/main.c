@@ -81,12 +81,12 @@ int main (int argc, char** argv) {
     size_t N = SIZE;
     double E, S;
 
-    printf("stride = %d, freq = %f GHz, cl_size = %dB\n", stride, freq, cl_size);
-    freq = freq * 1e9;
 
-    printf("Vector length of %d assumed\n", _VL_);
-    printf("Accessing %lu cache line(s) per gather\n", cacheLinesPerGather);
-    printf("#%13s, %14s, %14s, %14s, %14s, %14s\n", "N", "Size(kB)", "tot. time", "time/LUP(ms)", "cy/gather", "cy/elem");
+    printf("Stride (elems),Frequency (GHz),Cache Line Size (B),Vector Width (elems),Cache Lines/Gather\n");
+    printf("%d,%f,%d,%d,%lu\n\n", stride, freq, cl_size, _VL_, cacheLinesPerGather);
+    printf("%13s,%14s,%14s,%14s,%14s,%14s\n", "N", "Size(kB)", "tot. time", "time/LUP(ms)", "cy/gather", "cy/elem");
+
+    freq = freq * 1e9;
     for(int N = 1024; N < 400000; N = 1.5 * N) {
         int N_alloc = N * 2;
         double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(double) );
@@ -147,7 +147,7 @@ int main (int argc, char** argv) {
         const double time_per_it = time * 1e6 / ((double) N * rep);
         const double cy_per_gather = time * freq / ((double) N * rep);
         const double cy_per_elem = cy_per_gather / _VL_;
-        printf("%14d, %14.2f, %14.10f, %14.10f, %14.6f, %14.6f\n", N, size, time, time_per_it, cy_per_gather, cy_per_elem);
+        printf("%14d,%14.2f,%14.10f,%14.10f,%14.6f,%14.6f\n", N, size, time, time_per_it, cy_per_gather, cy_per_elem);
         free(a);
         free(idx);
 #ifdef TEST
