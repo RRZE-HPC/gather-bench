@@ -84,7 +84,7 @@ int main (int argc, char** argv) {
 
     printf("Stride (elems),Frequency (GHz),Cache Line Size (B),Vector Width (elems),Cache Lines/Gather\n");
     printf("%d,%f,%d,%d,%lu\n\n", stride, freq, cl_size, _VL_, cacheLinesPerGather);
-    printf("%13s,%14s,%14s,%14s,%14s,%14s\n", "N", "Size(kB)", "tot. time", "time/LUP(ms)", "cy/gather", "cy/elem");
+    printf("%14s,%14s,%14s,%14s,%14s,%14s\n", "N", "Size(kB)", "tot. time", "time/LUP(ms)", "cy/gather", "cy/elem");
 
     freq = freq * 1e9;
     for(int N = 1024; N < 400000; N = 1.5 * N) {
@@ -145,8 +145,8 @@ int main (int argc, char** argv) {
 
         const double size = N * (sizeof(double) + sizeof(int)) / 1000.0;
         const double time_per_it = time * 1e6 / ((double) N * rep);
-        const double cy_per_gather = time * freq / ((double) N * rep);
-        const double cy_per_elem = cy_per_gather / _VL_;
+        const double cy_per_gather = time * freq * _VL_ / ((double) N * rep);
+        const double cy_per_elem = time * freq / ((double) N * rep);
         printf("%14d,%14.2f,%14.10f,%14.10f,%14.6f,%14.6f\n", N, size, time, time_per_it, cy_per_gather, cy_per_elem);
         free(a);
         free(idx);
