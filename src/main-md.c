@@ -87,7 +87,7 @@ int main (int argc, char** argv) {
     printf("%14s,%14s,%14s,%14s,%14s,%14s,%14s\n", "N", "Size(kB)", "tot. time", "time/LUP(ms)", "cy/it", "cy/gather", "cy/elem");
 
     freq = freq * 1e9;
-    for(int N = 1024; N < 400000; N = 1.5 * N) {
+    for(int N = 512; N < 200000; N = 1.5 * N) {
         // Currently, it only works when the size is multiple of 8 (no preamble and prelude)
         if(N % 8 != 0) {
             N = N + 8 - (N % 8);
@@ -145,13 +145,13 @@ int main (int argc, char** argv) {
 
         if(test_failed) {
             printf("Test failed!\n");
-            //return EXIT_FAILURE;
+            return EXIT_FAILURE;
         } else {
             printf("Test passed!\n");
         }
 #endif
 
-        const double size = N * (sizeof(double) + sizeof(int)) / 1000.0;
+        const double size = N * (3 * sizeof(double) + sizeof(int)) / 1000.0;
         const double time_per_it = time * 1e6 / ((double) N * rep);
         const double cy_per_it = time * freq * _VL_ / ((double) N * rep);
         const double cy_per_gather = time * freq * _VL_ / ((double) N * rep * dims);
