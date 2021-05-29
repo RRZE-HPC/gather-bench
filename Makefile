@@ -1,34 +1,41 @@
-TAG = GCC
+TAG = ICC
 ISA = avx512
 
 #CONFIGURE BUILD SYSTEM
 TARGET	   = gather-bench-$(TAG)
 BUILD_DIR  = ./$(TAG)
-SRC_DIR    = ./src
+SRC_DIR	= ./src
 MAKE_DIR   = ./
-ISA_DIR    = ./src/$(ISA)
-Q         ?= @
+ISA_DIR	= ./src/$(ISA)
+Q		 ?= @
 
 #DO NOT EDIT BELOW
 include $(MAKE_DIR)/include_$(TAG).mk
 INCLUDES  += -I./src/includes
 
-VPATH     = $(SRC_DIR) ${ISA_DIR}
-ASM       = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.s,$(wildcard $(SRC_DIR)/*.c))
-ASM      += $(patsubst $(SRC_DIR)/%.f90, $(BUILD_DIR)/%.s,$(wildcard $(SRC_DIR)/*.f90))
-OBJ       = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.c))
-OBJ      += $(patsubst $(SRC_DIR)/%.cc, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.cc))
-OBJ      += $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.cpp))
-OBJ      += $(patsubst $(SRC_DIR)/%.f90, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.f90))
-OBJ      += $(patsubst $(SRC_DIR)/%.F90, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.F90))
-OBJ      += $(patsubst $(SRC_DIR)/%.s, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.s))
-OBJ      += $(patsubst $(ISA_DIR)/%.s, $(BUILD_DIR)/%.o,$(wildcard $(ISA_DIR)/*.s))
+VPATH	 = $(SRC_DIR) ${ISA_DIR}
+ASM	   = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.s,$(wildcard $(SRC_DIR)/*.c))
+ASM	  += $(patsubst $(SRC_DIR)/%.f90, $(BUILD_DIR)/%.s,$(wildcard $(SRC_DIR)/*.f90))
+OBJ	   = $(filter-out $(BUILD_DIR)/main%, $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.c)))
+OBJ	  += $(patsubst $(SRC_DIR)/%.cc, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.cc))
+OBJ	  += $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.cpp))
+OBJ	  += $(patsubst $(SRC_DIR)/%.f90, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.f90))
+OBJ	  += $(patsubst $(SRC_DIR)/%.F90, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.F90))
+OBJ	  += $(patsubst $(SRC_DIR)/%.s, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.s))
+OBJ	  += $(patsubst $(ISA_DIR)/%.s, $(BUILD_DIR)/%.o,$(wildcard $(ISA_DIR)/*.s))
 CPPFLAGS := $(CPPFLAGS) $(DEFINES) $(INCLUDES) -DISA_$(ISA)
 
+ifneq ($(VARIANT),)
+	.DEFAULT_GOAL := ${TARGET}-$(VARIANT)
+endif
 
-${TARGET}: $(BUILD_DIR) $(OBJ)
+${TARGET}: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main.c
 	@echo "===>  LINKING  $(TARGET)"
-	$(Q)${LINKER} ${LFLAGS} -o $(TARGET) $(OBJ) $(LIBS)
+	$(Q)${LINKER} ${CPPFLAGS} ${LFLAGS} -o $(TARGET) $(SRC_DIR)/main.c $(OBJ) $(LIBS)
+
+${TARGET}-%: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main-%.c
+	@echo "===>  LINKING  $(TARGET)-$* "
+	$(Q)${LINKER} ${CPPFLAGS} ${LFLAGS} -o $(TARGET)-$* $(SRC_DIR)/main-$*.c $(OBJ) $(LIBS)
 
 asm:  $(BUILD_DIR) $(ASM)
 
