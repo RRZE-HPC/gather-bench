@@ -88,10 +88,11 @@ int main (int argc, char** argv) {
 
     freq = freq * 1e9;
     for(int N = 512; N < 200000; N = 1.5 * N) {
-        // Currently, it only works when the size is multiple of 8 (no preamble and prelude)
-        if(N % 8 != 0) {
-            N = N + 8 - (N % 8);
+        // Currently this only works when the arraz size (in elements) is multiple of the vector length (no preamble and prelude)
+        if(N % _VL_ != 0) {
+            N = N + _VL_ - (N % _VL_);
         }
+
         int N_alloc = N * 2;
         double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * dims * sizeof(double) );
         int* idx = (int*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(int) );
