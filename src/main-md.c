@@ -58,12 +58,20 @@
 #define _VL_  4
 #endif
 
+#ifdef SOA
+#define GATHER gather_soa
+#else
+#define GATHER gather_aos
+#endif
+
 //#define TEST
 
 #ifdef TEST
 extern void gather_aos(double*, int*, int, double*);
+extern void gather_soa(double*, int*, int, double*);
 #else
 extern void gather_aos(double*, int*, int);
+extern void gather_soa(double*, int*, int);
 #endif
 
 int main (int argc, char** argv) {
@@ -88,9 +96,9 @@ int main (int argc, char** argv) {
 
     freq = freq * 1e9;
     for(int N = 512; N < 200000; N = 1.5 * N) {
-        // Currently this only works when the arraz size (in elements) is multiple of the vector length (no preamble and prelude)
+        // Currently this only works when the array size (in elements) is multiple of the vector length (no preamble and prelude)
         if(N % _VL_ != 0) {
-            N = N + _VL_ - (N % _VL_);
+            N += _VL_ - (N % _VL_);
         }
 
         int N_alloc = N * 2;
@@ -104,18 +112,24 @@ int main (int argc, char** argv) {
 #endif
 
         for(int i = 0; i < N_alloc; ++i) {
+#ifdef SOA
+            a[N * 0 + i] = N * 0 + i;
+            a[N * 1 + i] = N * 1 + i;
+            a[N * 2 + i] = N * 2 + i;
+#else
             a[i * dims + 0] = i * dims + 0;
             a[i * dims + 1] = i * dims + 1;
             a[i * dims + 2] = i * dims + 2;
+#endif
             idx[i] = (i * stride) % N;
         }
 
         S = getTimeStamp();
         for(int r = 0; r < 100; ++r) {
 #ifdef TEST
-            gather_aos(a, idx, N, t);
+            GATHER(a, idx, N, t);
 #else
-            gather_aos(a, idx, N);
+            GATHER(a, idx, N);
 #endif
         }
         E = getTimeStamp();
@@ -124,9 +138,9 @@ int main (int argc, char** argv) {
         S = getTimeStamp();
         for(int r = 0; r < rep; ++r) {
 #ifdef TEST
-            gather_aos(a, idx, N, t);
+            GATHER(a, idx, N, t);
 #else
-            gather_aos(a, idx, N);
+            GATHER(a, idx, N);
 #endif
         }
         E = getTimeStamp();
@@ -137,7 +151,11 @@ int main (int argc, char** argv) {
         int test_failed = 0;
         for(int i = 0; i < N; ++i) {
             for(int d = 0; d < dims; ++d) {
-                if(t[N * d + i] != ((i * stride) % N) * dims + d) {
+#ifdef SOA
+                if(t[d * N + i] != d * N + ((i * stride) % N)) {
+#else
+                if(t[d * N + i] != ((i * stride) % N) * dims + d) {
+#endif
                     test_failed = 1;
                     break;
                 }

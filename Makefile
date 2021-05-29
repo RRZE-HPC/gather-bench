@@ -29,6 +29,10 @@ ifneq ($(VARIANT),)
 	.DEFAULT_GOAL := ${TARGET}-$(VARIANT)
 endif
 
+ifneq ($(SOA),)
+	CPPFLAGS += -DSOA
+endif
+
 ${TARGET}: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main.c
 	@echo "===>  LINKING  $(TARGET)"
 	$(Q)${LINKER} ${CPPFLAGS} ${LFLAGS} -o $(TARGET) $(SRC_DIR)/main.c $(OBJ) $(LIBS)
