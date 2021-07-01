@@ -54,17 +54,19 @@
 
 #ifdef ISA_avx512
 #define _VL_  8
+#define ISA_STRING "avx512"
 #else
 #define _VL_  4
+#define ISA_STRING "avx2"
 #endif
 
-#ifdef SOA
-#define GATHER gather_soa
-#else
+#ifdef AOS
 #define GATHER gather_aos
+#define LAYOUT_STRING "AoS"
+#else
+#define GATHER gather_soa
+#define LAYOUT_STRING "SoA"
 #endif
-
-//#define TEST
 
 #ifdef TEST
 extern void gather_aos(double*, int*, int, double*);
@@ -86,12 +88,16 @@ int main (int argc, char** argv) {
     double freq = atof(argv[2]);
     int cl_size = (argc == 3) ? 64 : atoi(argv[3]);
     size_t bytesPerWord = sizeof(double);
+    #ifdef AOS
     size_t cacheLinesPerGather = MIN(MAX(stride * _VL_ * dims / (cl_size / sizeof(double)), 1), _VL_);
+    #else
+    size_t cacheLinesPerGather = MIN(MAX(stride * _VL_ / (cl_size / sizeof(double)), 1), _VL_) * dims;
+    #endif
     size_t N = SIZE;
     double E, S;
 
-    printf("Stride,Dims,Frequency (GHz),Cache Line Size (B),Vector Width (e),Cache Lines/Gather\n");
-    printf("%d,%d,%f,%d,%d,%lu\n\n", stride, dims, freq, cl_size, _VL_, cacheLinesPerGather);
+    printf("ISA,Layout,Stride,Dims,Frequency (GHz),Cache Line Size (B),Vector Width (e),Cache Lines/Gather\n");
+    printf("%s,%s,%d,%d,%f,%d,%d,%lu\n\n", ISA_STRING, LAYOUT_STRING, stride, dims, freq, cl_size, _VL_, cacheLinesPerGather);
     printf("%14s,%14s,%14s,%14s,%14s,%14s,%14s\n", "N", "Size(kB)", "tot. time", "time/LUP(ms)", "cy/it", "cy/gather", "cy/elem");
 
     freq = freq * 1e9;
@@ -112,14 +118,14 @@ int main (int argc, char** argv) {
 #endif
 
         for(int i = 0; i < N_alloc; ++i) {
-#ifdef SOA
-            a[N * 0 + i] = N * 0 + i;
-            a[N * 1 + i] = N * 1 + i;
-            a[N * 2 + i] = N * 2 + i;
-#else
+#ifdef AOS
             a[i * dims + 0] = i * dims + 0;
             a[i * dims + 1] = i * dims + 1;
             a[i * dims + 2] = i * dims + 2;
+#else
+            a[N * 0 + i] = N * 0 + i;
+            a[N * 1 + i] = N * 1 + i;
+            a[N * 2 + i] = N * 2 + i;
 #endif
             idx[i] = (i * stride) % N;
         }
@@ -151,10 +157,10 @@ int main (int argc, char** argv) {
         int test_failed = 0;
         for(int i = 0; i < N; ++i) {
             for(int d = 0; d < dims; ++d) {
-#ifdef SOA
-                if(t[d * N + i] != d * N + ((i * stride) % N)) {
-#else
+#ifdef AOS
                 if(t[d * N + i] != ((i * stride) % N) * dims + d) {
+#else
+                if(t[d * N + i] != d * N + ((i * stride) % N)) {
 #endif
                     test_failed = 1;
                     break;

@@ -41,12 +41,13 @@ vgatherdpd ymm0, [     rdi + xmm3 * 8], ymm5
 vgatherdpd ymm1, [8  + rdi + xmm3 * 8], ymm6
 vgatherdpd ymm2, [16 + rdi + xmm3 * 8], ymm7
 
-# Required for test
-#vmovupd [rcx + rax * 8], ymm0
-#lea rbx, [rcx + rdx * 8]
-#vmovupd [rbx + rax * 8], ymm1
-#lea r9, [rbx + rdx * 8]
-#vmovupd [r9 + rax * 8], ymm2
+#ifdef TEST
+vmovupd  [rcx + rax * 8], ymm0
+lea rbx, [rcx + rdx * 8]
+vmovupd  [rbx + rax * 8], ymm1
+lea r9,  [rbx + rdx * 8]
+vmovupd  [r9  + rax * 8], ymm2
+#endif
 
 addq rax, 4
 cmpq rax, rdx

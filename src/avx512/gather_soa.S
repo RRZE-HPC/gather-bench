@@ -41,12 +41,13 @@ vgatherdpd zmm0{k1}, [rdi + ymm3 * 8]
 vgatherdpd zmm1{k2}, [r8  + ymm3 * 8]
 vgatherdpd zmm2{k3}, [r9  + ymm3 * 8]
 
-# Required for test
-#vmovupd [rcx + rax * 8], zmm0
-#lea rbx, [rcx + rdx * 8]
-#vmovupd [rbx + rax * 8], zmm1
-#lea r10, [rbx + rdx * 8]
-#vmovupd [r10 + rax * 8], zmm2
+#ifdef TEST
+vmovupd  [rcx + rax * 8], zmm0
+lea rbx, [rcx + rdx * 8]
+vmovupd  [rbx + rax * 8], zmm1
+lea r10, [rbx + rdx * 8]
+vmovupd  [r10 + rax * 8], zmm2
+#endif
 
 addq rax, 8
 cmpq rax, rdx

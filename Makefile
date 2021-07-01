@@ -1,6 +1,3 @@
-TAG = ICC
-ISA = avx512
-
 #CONFIGURE BUILD SYSTEM
 TARGET	   = gather-bench-$(TAG)
 BUILD_DIR  = ./$(TAG)
@@ -10,6 +7,7 @@ ISA_DIR	= ./src/$(ISA)
 Q		 ?= @
 
 #DO NOT EDIT BELOW
+include $(MAKE_DIR)/config.mk
 include $(MAKE_DIR)/include_$(TAG).mk
 INCLUDES  += -I./src/includes
 
@@ -22,15 +20,19 @@ OBJ	  += $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.c
 OBJ	  += $(patsubst $(SRC_DIR)/%.f90, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.f90))
 OBJ	  += $(patsubst $(SRC_DIR)/%.F90, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.F90))
 OBJ	  += $(patsubst $(SRC_DIR)/%.s, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.s))
-OBJ	  += $(patsubst $(ISA_DIR)/%.s, $(BUILD_DIR)/%.o,$(wildcard $(ISA_DIR)/*.s))
+OBJ	  += $(patsubst $(ISA_DIR)/%.S, $(BUILD_DIR)/%.o,$(wildcard $(ISA_DIR)/*.S))
 CPPFLAGS := $(CPPFLAGS) $(DEFINES) $(INCLUDES) -DISA_$(ISA)
 
 ifneq ($(VARIANT),)
 	.DEFAULT_GOAL := ${TARGET}-$(VARIANT)
 endif
 
-ifneq ($(SOA),)
-	CPPFLAGS += -DSOA
+ifeq ($(strip $(DATA_LAYOUT)),AOS)
+    CPPFLAGS += -DAOS
+endif
+
+ifeq ($(strip $(TEST)),true)
+    CPPFLAGS += -DTEST
 endif
 
 ${TARGET}: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main.c
@@ -77,6 +79,10 @@ $(BUILD_DIR)/%.o:  %.F90
 $(BUILD_DIR)/%.o:  %.s
 	@echo "===>  ASSEMBLE  $@"
 	$(Q)$(AS)  $(ASFLAGS) $< -o $@
+
+$(BUILD_DIR)/%.o:  %.S
+	@echo "===>  ASSEMBLE  $@"
+	$(Q)$(CC) -c $(CPPFLAGS) $< -o $@
 
 tags:
 	@echo "===>  GENERATE  TAGS"

@@ -54,11 +54,11 @@
 
 #ifdef ISA_avx512
 #define _VL_  8
+#define ISA_STRING "avx512"
 #else
 #define _VL_  4
+#define ISA_STRING "avx2"
 #endif
-
-//#define TEST
 
 #ifdef TEST
 extern void gather(double*, int*, int, double*);
@@ -81,9 +81,8 @@ int main (int argc, char** argv) {
     size_t N = SIZE;
     double E, S;
 
-
-    printf("Stride (elems),Frequency (GHz),Cache Line Size (B),Vector Width (elems),Cache Lines/Gather\n");
-    printf("%d,%f,%d,%d,%lu\n\n", stride, freq, cl_size, _VL_, cacheLinesPerGather);
+    printf("ISA,Stride (elems),Frequency (GHz),Cache Line Size (B),Vector Width (elems),Cache Lines/Gather\n");
+    printf("%s,%d,%f,%d,%d,%lu\n\n", ISA_STRING, stride, freq, cl_size, _VL_, cacheLinesPerGather);
     printf("%14s,%14s,%14s,%14s,%14s,%14s\n", "N", "Size(kB)", "tot. time", "time/LUP(ms)", "cy/gather", "cy/elem");
 
     freq = freq * 1e9;
