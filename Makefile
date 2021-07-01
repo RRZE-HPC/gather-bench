@@ -35,6 +35,10 @@ ifeq ($(strip $(TEST)),true)
     CPPFLAGS += -DTEST
 endif
 
+ifeq ($(strip $(PADDING)),true)
+    CPPFLAGS += -DPADDING
+endif
+
 ${TARGET}: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main.c
 	@echo "===>  LINKING  $(TARGET)"
 	$(Q)${LINKER} ${CPPFLAGS} ${LFLAGS} -o $(TARGET) $(SRC_DIR)/main.c $(OBJ) $(LIBS)

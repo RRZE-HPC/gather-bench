@@ -7,6 +7,8 @@ ISA ?= avx512
 DATA_TYPE ?= DP
 # AOS or SOA
 DATA_LAYOUT ?= AOS
+# Padding byte for AoS
+PADDING ?= false
 
 # Test correctness of gather kernels
 TEST ?= false

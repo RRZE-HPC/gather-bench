@@ -29,7 +29,11 @@ xor   rax, rax
 
 vmovdqu ymm3, YMMWORD PTR [rsi + rax * 4]
 vpaddd ymm4, ymm3, ymm3
+#ifdef PADDING
+vpaddd ymm3, ymm4, ymm4
+#else
 vpaddd ymm3, ymm3, ymm4
+#endif
 
 # Prefetching instructions
 #mov ebx, DWORD PTR[rsi + rax*4]

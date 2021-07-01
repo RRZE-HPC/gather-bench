@@ -68,6 +68,12 @@
 #define LAYOUT_STRING "SoA"
 #endif
 
+#if defined(PADDING) && defined(AOS)
+#define PADDING_BYTES 1
+#else
+#define PADDING_BYTES 0
+#endif
+
 #ifdef TEST
 extern void gather_aos(double*, int*, int, double*);
 extern void gather_soa(double*, int*, int, double*);
@@ -84,12 +90,13 @@ int main (int argc, char** argv) {
     }
 
     int stride = atoi(argv[1]);
-    const int dims = 3;
     double freq = atof(argv[2]);
     int cl_size = (argc == 3) ? 64 : atoi(argv[3]);
     size_t bytesPerWord = sizeof(double);
+    const int dims = 3;
+    const int snbytes = dims + PADDING_BYTES; // bytes per element (struct), includes padding
     #ifdef AOS
-    size_t cacheLinesPerGather = MIN(MAX(stride * _VL_ * dims / (cl_size / sizeof(double)), 1), _VL_);
+    size_t cacheLinesPerGather = MIN(MAX(stride * _VL_ * snbytes / (cl_size / sizeof(double)), 1), _VL_);
     #else
     size_t cacheLinesPerGather = MIN(MAX(stride * _VL_ / (cl_size / sizeof(double)), 1), _VL_) * dims;
     #endif
@@ -108,7 +115,7 @@ int main (int argc, char** argv) {
         }
 
         int N_alloc = N * 2;
-        double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * dims * sizeof(double) );
+        double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * snbytes * sizeof(double) );
         int* idx = (int*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(int) );
         int rep;
         double time;
@@ -119,9 +126,9 @@ int main (int argc, char** argv) {
 
         for(int i = 0; i < N_alloc; ++i) {
 #ifdef AOS
-            a[i * dims + 0] = i * dims + 0;
-            a[i * dims + 1] = i * dims + 1;
-            a[i * dims + 2] = i * dims + 2;
+            a[i * snbytes + 0] = i * dims + 0;
+            a[i * snbytes + 1] = i * dims + 1;
+            a[i * snbytes + 2] = i * dims + 2;
 #else
             a[N * 0 + i] = N * 0 + i;
             a[N * 1 + i] = N * 1 + i;
