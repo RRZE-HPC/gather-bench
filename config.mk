@@ -2,6 +2,8 @@
 TAG ?= ICC
 # Supported: avx2, avx512
 ISA ?= avx512
+# Use likwid?
+ENABLE_LIKWID ?= true
 
 # SP or DP
 DATA_TYPE ?= DP

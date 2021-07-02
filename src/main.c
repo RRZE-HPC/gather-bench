@@ -29,7 +29,9 @@
 #include <unistd.h>
 #include <limits.h>
 #include <float.h>
-
+//---
+#include <likwid-marker.h>
+//---
 #include <timing.h>
 #include <allocate.h>
 
@@ -67,6 +69,9 @@ extern void gather(double*, int*, int);
 #endif
 
 int main (int argc, char** argv) {
+    LIKWID_MARKER_INIT;
+    LIKWID_MARKER_REGISTER("gather");
+
     if (argc < 3) {
         printf("Please provide stride and frequency\n");
         printf("%s <stride> <freq (GHz)> [cache line size (B)]\n", argv[0]);
@@ -114,6 +119,7 @@ int main (int argc, char** argv) {
 
         rep = 100 * (0.5 / (E - S));
         S = getTimeStamp();
+        LIKWID_MARKER_START("gather");
         for(int r = 0; r < rep; ++r) {
 #ifdef TEST
             gather(a, idx, N, t);
@@ -121,6 +127,7 @@ int main (int argc, char** argv) {
             gather(a, idx, N);
 #endif
         }
+        LIKWID_MARKER_STOP("gather");
         E = getTimeStamp();
 
         time = E - S;
@@ -154,5 +161,6 @@ int main (int argc, char** argv) {
 #endif
     }
 
+    LIKWID_MARKER_CLOSE;
     return EXIT_SUCCESS;
 }
