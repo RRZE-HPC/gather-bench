@@ -125,7 +125,6 @@ int main (int argc, char** argv) {
         int N_alloc = N * 2;
         double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * snbytes * sizeof(double) );
         int* idx = (int*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(int) );
-        long int cycles[dims];
         int rep;
         double time;
 
@@ -133,6 +132,12 @@ int main (int argc, char** argv) {
         double* t = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * dims * sizeof(double) );
 #else
         double* t = (double*) NULL;
+#endif
+
+#ifdef MEASURE_GATHER_CYCLES
+        long int* cycles = (long int*) allocate( ARRAY_ALIGNMENT, N_alloc * dims * sizeof(long int)) ;
+#else
+        long int* cycles = (long int*) NULL;
 #endif
 
         for(int i = 0; i < N_alloc; ++i) {
@@ -155,8 +160,10 @@ int main (int argc, char** argv) {
         E = getTimeStamp();
 
 #ifdef MEASURE_GATHER_CYCLES
-        for(int d = 0; d < dims; d++) {
-            cycles[d] = 0;
+        for(int i = 0; i < N_alloc; i++) {
+            cycles[i * 3 + 0] = 0;
+            cycles[i * 3 + 1] = 0;
+            cycles[i * 3 + 2] = 0;
         }
 #endif
 
@@ -194,7 +201,7 @@ int main (int argc, char** argv) {
         }
 #endif
 
-        const double size = N * (3 * sizeof(double) + sizeof(int)) / 1000.0;
+        const double size = N * (dims * sizeof(double) + sizeof(int)) / 1000.0;
         printf("%14d,%14.2f,", N, size);
 
 #ifndef MEASURE_GATHER_CYCLES
@@ -204,17 +211,27 @@ int main (int argc, char** argv) {
         const double cy_per_elem = time * freq / ((double) N * rep * dims);
         printf("%14.10f,%14.10f,%14.6f,%14.6f,%14.6f", time, time_per_it, cy_per_it, cy_per_gather, cy_per_elem);
 #else
-        const double cy_x = (double)(cycles[0]) / ((double) N * rep);
-        const double cy_y = (double)(cycles[1]) / ((double) N * rep);
-        const double cy_z = (double)(cycles[2]) / ((double) N * rep);
-        printf("%14.6f,%14.6f,%14.6f", cy_x, cy_y, cy_z);
+        double cy_x = 0.0;
+        double cy_y = 0.0;
+        double cy_z = 0.0;
+        for(int i = 0; i < N; ++i) {
+            cy_x += (double)(cycles[i * 3 + 0]);
+            cy_y += (double)(cycles[i * 3 + 1]);
+            cy_z += (double)(cycles[i * 3 + 2]);
+        }
+        printf("%14.6f,%14.6f,%14.6f", cy_x / (double) N, cy_y / (double) N, cy_z / (double) N);
 #endif
 
         printf("\n");
         free(a);
         free(idx);
+
 #ifdef TEST
         free(t);
+#endif
+
+#ifdef MEASURE_GATHER_CYCLES
+        free(cycles);
 #endif
     }
 

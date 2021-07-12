@@ -64,26 +64,33 @@ vpxord zmm2, zmm2, zmm2
 #ifdef MEASURE_GATHER_CYCLES
 mov r9, rax
 mov r10, rdx
+xor r11, r11
+add r11, rax
+add r11, rax
+add r11, rax
+#shr r11, 3
 
 xor rbx, rbx
 lfence
 rdtsc
 add ebx, eax
-vgatherdpd zmm0{k1}, [     rdi + ymm3 * 8]
+vgatherdpd zmm0{k1}, [rdi + ymm3 * 8]
 lfence
 rdtsc
 sub eax, ebx
-add [r8], rax
+#movdiri [r8 + r11], rax
+movnti [r8 + r11], rax
 
 xor rbx, rbx
 lfence
 rdtsc
 add ebx, eax
-vgatherdpd zmm1{k2}, [8 +  rdi + ymm3 * 8]
+vgatherdpd zmm1{k2}, [8 + rdi + ymm3 * 8]
 lfence
 rdtsc
 sub eax, ebx
-add [r8 + 8], rax
+#movdiri [8 + r8 + r11], rax
+movnti [8 + r8 + r11], rax
 
 xor rbx, rbx
 lfence
@@ -93,7 +100,8 @@ vgatherdpd zmm2{k3}, [16 + rdi + ymm3 * 8]
 lfence
 rdtsc
 sub eax, ebx
-add [r8 + 16], rax
+#movdiri [16 + r8 + r11], rax
+movnti [16 + r8 + r11], rax
 
 mov rax, r9
 mov rdx, r10
