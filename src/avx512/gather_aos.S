@@ -8,6 +8,7 @@ SCALAR:
 # rsi -> idx
 # rdx -> N
 # rcx -> t
+# r8  -> cycles
 .text
 .globl gather_aos
 .type gather_aos, @function
@@ -59,9 +60,48 @@ vpcmpeqb k3, xmm5, xmm5
 vpxord zmm0, zmm0, zmm0
 vpxord zmm1, zmm1, zmm1
 vpxord zmm2, zmm2, zmm2
+
+#ifdef MEASURE_GATHER_CYCLES
+mov r9, rax
+mov r10, rdx
+
+xor rbx, rbx
+lfence
+rdtsc
+add ebx, eax
+vgatherdpd zmm0{k1}, [     rdi + ymm3 * 8]
+lfence
+rdtsc
+sub eax, ebx
+add [r8], rax
+
+xor rbx, rbx
+lfence
+rdtsc
+add ebx, eax
+vgatherdpd zmm1{k2}, [8 +  rdi + ymm3 * 8]
+lfence
+rdtsc
+sub eax, ebx
+add [r8 + 8], rax
+
+xor rbx, rbx
+lfence
+rdtsc
+add ebx, eax
+vgatherdpd zmm2{k3}, [16 + rdi + ymm3 * 8]
+lfence
+rdtsc
+sub eax, ebx
+add [r8 + 16], rax
+
+mov rax, r9
+mov rdx, r10
+#else
 vgatherdpd zmm0{k1}, [     rdi + ymm3 * 8]
 vgatherdpd zmm1{k2}, [8 +  rdi + ymm3 * 8]
 vgatherdpd zmm2{k3}, [16 + rdi + ymm3 * 8]
+#endif
 
 #ifdef TEST
 vmovupd  [rcx + rax * 8], zmm0

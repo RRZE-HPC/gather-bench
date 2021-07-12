@@ -40,6 +40,10 @@ ifeq ($(strip $(PADDING)),true)
     CPPFLAGS += -DPADDING
 endif
 
+ifeq ($(strip $(MEASURE_GATHER_CYCLES)),true)
+    CPPFLAGS += -DMEASURE_GATHER_CYCLES
+endif
+
 ${TARGET}: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main.c
 	@echo "===>  LINKING  $(TARGET)"
 	$(Q)${LINKER} ${CPPFLAGS} ${LFLAGS} -o $(TARGET) $(SRC_DIR)/main.c $(OBJ) $(LIBS)

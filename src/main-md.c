@@ -76,13 +76,8 @@
 #define PADDING_BYTES 0
 #endif
 
-#ifdef TEST
-extern void gather_aos(double*, int*, int, double*);
-extern void gather_soa(double*, int*, int, double*);
-#else
-extern void gather_aos(double*, int*, int);
-extern void gather_soa(double*, int*, int);
-#endif
+extern void gather_aos(double*, int*, int, double*, long int*);
+extern void gather_soa(double*, int*, int, double*, long int*);
 
 int main (int argc, char** argv) {
     LIKWID_MARKER_INIT;
@@ -110,9 +105,17 @@ int main (int argc, char** argv) {
 
     printf("ISA,Layout,Stride,Dims,Frequency (GHz),Cache Line Size (B),Vector Width (e),Cache Lines/Gather\n");
     printf("%s,%s,%d,%d,%f,%d,%d,%lu\n\n", ISA_STRING, LAYOUT_STRING, stride, dims, freq, cl_size, _VL_, cacheLinesPerGather);
-    printf("%14s,%14s,%14s,%14s,%14s,%14s,%14s\n", "N", "Size(kB)", "tot. time", "time/LUP(ms)", "cy/it", "cy/gather", "cy/elem");
+    printf("%14s,%14s,", "N", "Size(kB)");
 
+#ifndef MEASURE_GATHER_CYCLES
+    printf("%14s,%14s,%14s,%14s,%14s", "tot. time", "time/LUP(ms)", "cy/it", "cy/gather", "cy/elem");
+#else
+    printf("%14s,%14s,%14s", "avg cy(x)", "avg cy(y)", "avg cy(z)");
+#endif
+
+    printf("\n");
     freq = freq * 1e9;
+
     for(int N = 512; N < 200000; N = 1.5 * N) {
         // Currently this only works when the array size (in elements) is multiple of the vector length (no preamble and prelude)
         if(N % _VL_ != 0) {
@@ -122,11 +125,14 @@ int main (int argc, char** argv) {
         int N_alloc = N * 2;
         double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * snbytes * sizeof(double) );
         int* idx = (int*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(int) );
+        long int cycles[dims];
         int rep;
         double time;
 
 #ifdef TEST
         double* t = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * dims * sizeof(double) );
+#else
+        double* t = (double*) NULL;
 #endif
 
         for(int i = 0; i < N_alloc; ++i) {
@@ -144,23 +150,21 @@ int main (int argc, char** argv) {
 
         S = getTimeStamp();
         for(int r = 0; r < 100; ++r) {
-#ifdef TEST
-            GATHER(a, idx, N, t);
-#else
-            GATHER(a, idx, N);
-#endif
+            GATHER(a, idx, N, t, cycles);
         }
         E = getTimeStamp();
+
+#ifdef MEASURE_GATHER_CYCLES
+        for(int d = 0; d < dims; d++) {
+            cycles[d] = 0;
+        }
+#endif
 
         rep = 100 * (0.5 / (E - S));
         S = getTimeStamp();
         LIKWID_MARKER_START("gather");
         for(int r = 0; r < rep; ++r) {
-#ifdef TEST
-            GATHER(a, idx, N, t);
-#else
-            GATHER(a, idx, N);
-#endif
+            GATHER(a, idx, N, t, cycles);
         }
         LIKWID_MARKER_STOP("gather");
         E = getTimeStamp();
@@ -191,11 +195,22 @@ int main (int argc, char** argv) {
 #endif
 
         const double size = N * (3 * sizeof(double) + sizeof(int)) / 1000.0;
+        printf("%14d,%14.2f,", N, size);
+
+#ifndef MEASURE_GATHER_CYCLES
         const double time_per_it = time * 1e6 / ((double) N * rep);
         const double cy_per_it = time * freq * _VL_ / ((double) N * rep);
         const double cy_per_gather = time * freq * _VL_ / ((double) N * rep * dims);
         const double cy_per_elem = time * freq / ((double) N * rep * dims);
-        printf("%14d,%14.2f,%14.10f,%14.10f,%14.6f,%14.6f,%14.6f\n", N, size, time, time_per_it, cy_per_it, cy_per_gather, cy_per_elem);
+        printf("%14.10f,%14.10f,%14.6f,%14.6f,%14.6f", time, time_per_it, cy_per_it, cy_per_gather, cy_per_elem);
+#else
+        const double cy_x = (double)(cycles[0]) / ((double) N * rep);
+        const double cy_y = (double)(cycles[1]) / ((double) N * rep);
+        const double cy_z = (double)(cycles[2]) / ((double) N * rep);
+        printf("%14.6f,%14.6f,%14.6f", cy_x, cy_y, cy_z);
+#endif
+
+        printf("\n");
         free(a);
         free(idx);
 #ifdef TEST

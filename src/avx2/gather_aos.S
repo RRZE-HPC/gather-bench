@@ -30,7 +30,11 @@ vpcmpeqd ymm8, ymm8, ymm8
 
 vmovups xmm3, XMMWORD PTR [rsi + rax * 4]
 vpaddd xmm4, xmm3, xmm3
+#ifdef PADDING
+vpaddd xmm3, xmm4, xmm4
+#else
 vpaddd xmm3, xmm3, xmm4
+#endif
 vmovdqa ymm5, ymm8
 vmovdqa ymm6, ymm8
 vmovdqa ymm7, ymm8
