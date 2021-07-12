@@ -110,7 +110,7 @@ int main (int argc, char** argv) {
 #ifndef MEASURE_GATHER_CYCLES
     printf("%14s,%14s,%14s,%14s,%14s", "tot. time", "time/LUP(ms)", "cy/it", "cy/gather", "cy/elem");
 #else
-    printf("%14s,%14s,%14s", "avg cy(x)", "avg cy(y)", "avg cy(z)");
+    printf("%27s,%27s,%27s", "min/max/avg cy(x)", "min/max/avg cy(y)", "min/max/avg cy(z)");
 #endif
 
     printf("\n");
@@ -122,7 +122,9 @@ int main (int argc, char** argv) {
             N += _VL_ - (N % _VL_);
         }
 
+        int N_gathers_per_dim = N / _VL_;
         int N_alloc = N * 2;
+        int N_cycles_alloc = N_gathers_per_dim * 2;
         double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * snbytes * sizeof(double) );
         int* idx = (int*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(int) );
         int rep;
@@ -135,7 +137,7 @@ int main (int argc, char** argv) {
 #endif
 
 #ifdef MEASURE_GATHER_CYCLES
-        long int* cycles = (long int*) allocate( ARRAY_ALIGNMENT, N_alloc * dims * sizeof(long int)) ;
+        long int* cycles = (long int*) allocate( ARRAY_ALIGNMENT, N_cycles_alloc * dims * sizeof(long int)) ;
 #else
         long int* cycles = (long int*) NULL;
 #endif
@@ -160,7 +162,7 @@ int main (int argc, char** argv) {
         E = getTimeStamp();
 
 #ifdef MEASURE_GATHER_CYCLES
-        for(int i = 0; i < N_alloc; i++) {
+        for(int i = 0; i < N_cycles_alloc; i++) {
             cycles[i * 3 + 0] = 0;
             cycles[i * 3 + 1] = 0;
             cycles[i * 3 + 2] = 0;
@@ -211,15 +213,30 @@ int main (int argc, char** argv) {
         const double cy_per_elem = time * freq / ((double) N * rep * dims);
         printf("%14.10f,%14.10f,%14.6f,%14.6f,%14.6f", time, time_per_it, cy_per_it, cy_per_gather, cy_per_elem);
 #else
-        double cy_x = 0.0;
-        double cy_y = 0.0;
-        double cy_z = 0.0;
-        for(int i = 0; i < N; ++i) {
-            cy_x += (double)(cycles[i * 3 + 0]);
-            cy_y += (double)(cycles[i * 3 + 1]);
-            cy_z += (double)(cycles[i * 3 + 2]);
+        double cy_min[dims];
+        double cy_max[dims];
+        double cy_avg[dims];
+
+        for(int d = 0; d < dims; d++) {
+            cy_min[d] = 100000.0;
+            cy_max[d] = 0.0;
+            cy_avg[d] = 0.0;
         }
-        printf("%14.6f,%14.6f,%14.6f", cy_x / (double) N, cy_y / (double) N, cy_z / (double) N);
+
+        for(int i = 0; i < N_gathers_per_dim; ++i) {
+            for(int d = 0; d < dims; d++) {
+                const double cy_d = (double)(cycles[i * 3 + d]);
+                cy_min[d] = MIN(cy_min[d], cy_d);
+                cy_max[d] = MAX(cy_max[d], cy_d);
+                cy_avg[d] += cy_d;
+            }
+        }
+        for(int d = 0; d < dims; d++) {
+            char tmp_str[64];
+            cy_avg[d] /= (double) N_gathers_per_dim;
+            snprintf(tmp_str, sizeof tmp_str, "%4.4f/%4.4f/%4.4f", cy_min[d], cy_max[d], cy_avg[d]);
+            printf("%27s%c", tmp_str, (d < dims - 1) ? ',' : ' ');
+        }
 #endif
 
         printf("\n");
