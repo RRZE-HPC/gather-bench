@@ -55,13 +55,19 @@ vpaddd ymm3, ymm3, ymm4
 #lea r15d, DWORD PTR[r15]
 
 vpcmpeqb k1, xmm5, xmm5
+#ifndef ONLY_FIRST_DIMENSION
 vpcmpeqb k2, xmm5, xmm5
 vpcmpeqb k3, xmm5, xmm5
+#endif
+
 vpxord zmm0, zmm0, zmm0
+#ifndef ONLY_FIRST_DIMENSION
 vpxord zmm1, zmm1, zmm1
 vpxord zmm2, zmm2, zmm2
+#endif
 
 #ifdef MEASURE_GATHER_CYCLES
+
 mov r9, rax
 mov r10, rdx
 xor r11, r11
@@ -81,6 +87,7 @@ sub eax, ebx
 #movdiri [r8 + r11], rax
 movnti [r8 + r11], rax
 
+#ifndef ONLY_FIRST_DIMENSION
 xor rbx, rbx
 lfence
 rdtsc
@@ -102,14 +109,21 @@ rdtsc
 sub eax, ebx
 #movdiri [16 + r8 + r11], rax
 movnti [16 + r8 + r11], rax
+#endif // ONLY_FIRST_DIMENSION
 
 mov rax, r9
 mov rdx, r10
-#else
+
+#else // MEASURE_GATHER_CYCLES
+
 vgatherdpd zmm0{k1}, [     rdi + ymm3 * 8]
+
+#ifndef ONLY_FIRST_DIMENSION
 vgatherdpd zmm1{k2}, [8 +  rdi + ymm3 * 8]
 vgatherdpd zmm2{k3}, [16 + rdi + ymm3 * 8]
 #endif
+
+#endif // MEASURE_GATHER_CYCLES
 
 #ifdef TEST
 vmovupd  [rcx + rax * 8], zmm0

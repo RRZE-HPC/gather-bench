@@ -44,6 +44,10 @@ ifeq ($(strip $(MEASURE_GATHER_CYCLES)),true)
     CPPFLAGS += -DMEASURE_GATHER_CYCLES
 endif
 
+ifeq ($(strip $(ONLY_FIRST_DIMENSION)),true)
+    CPPFLAGS += -DONLY_FIRST_DIMENSION
+endif
+
 ${TARGET}: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main.c
 	@echo "===>  LINKING  $(TARGET)"
 	$(Q)${LINKER} ${CPPFLAGS} ${LFLAGS} -o $(TARGET) $(SRC_DIR)/main.c $(OBJ) $(LIBS)

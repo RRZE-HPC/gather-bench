@@ -13,6 +13,8 @@ DATA_LAYOUT ?= AOS
 PADDING ?= false
 # Measure cycles for each gather separately
 MEASURE_GATHER_CYCLES ?= false
+# Gather data only for first dimension (one gather per iteration)
+ONLY_FIRST_DIMENSION ?= false
 
 # Test correctness of gather kernels
 TEST ?= false

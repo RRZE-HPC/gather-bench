@@ -39,6 +39,10 @@
 #error "Invalid ISA macro, possible values are: avx2 and avx512"
 #endif
 
+#if defined(TEST) && defined(ONLY_FIRST_DIMENSION)
+#error "TEST and ONLY_FIRST_DIMENSION options are mutually exclusive!"
+#endif
+
 #define HLINE "----------------------------------------------------------------------------\n"
 
 #ifndef MIN
@@ -110,7 +114,13 @@ int main (int argc, char** argv) {
 #ifndef MEASURE_GATHER_CYCLES
     printf("%14s,%14s,%14s,%14s,%14s", "tot. time", "time/LUP(ms)", "cy/it", "cy/gather", "cy/elem");
 #else
+
+#ifdef ONLY_FIRST_DIMENSION
     printf("%27s,%27s,%27s", "min/max/avg cy(x)", "min/max/avg cy(y)", "min/max/avg cy(z)");
+#else
+    printf("%27s", "min/max/avg cy(x)");
+#endif
+
 #endif
 
     printf("\n");
@@ -206,11 +216,17 @@ int main (int argc, char** argv) {
         const double size = N * (dims * sizeof(double) + sizeof(int)) / 1000.0;
         printf("%14d,%14.2f,", N, size);
 
+#ifdef ONLY_FIRST_DIMENSION
+        const int gathered_dims = 1;
+#else
+        const int gathered_dims = dims;
+#endif
+
 #ifndef MEASURE_GATHER_CYCLES
         const double time_per_it = time * 1e6 / ((double) N * rep);
         const double cy_per_it = time * freq * _VL_ / ((double) N * rep);
-        const double cy_per_gather = time * freq * _VL_ / ((double) N * rep * dims);
-        const double cy_per_elem = time * freq / ((double) N * rep * dims);
+        const double cy_per_gather = time * freq * _VL_ / ((double) N * rep * gathered_dims);
+        const double cy_per_elem = time * freq / ((double) N * rep * gathered_dims);
         printf("%14.10f,%14.10f,%14.6f,%14.6f,%14.6f", time, time_per_it, cy_per_it, cy_per_gather, cy_per_elem);
 #else
         double cy_min[dims];
@@ -224,18 +240,19 @@ int main (int argc, char** argv) {
         }
 
         for(int i = 0; i < N_gathers_per_dim; ++i) {
-            for(int d = 0; d < dims; d++) {
+            for(int d = 0; d < gathered_dims; d++) {
                 const double cy_d = (double)(cycles[i * 3 + d]);
                 cy_min[d] = MIN(cy_min[d], cy_d);
                 cy_max[d] = MAX(cy_max[d], cy_d);
                 cy_avg[d] += cy_d;
             }
         }
-        for(int d = 0; d < dims; d++) {
+
+        for(int d = 0; d < gathered_dims; d++) {
             char tmp_str[64];
             cy_avg[d] /= (double) N_gathers_per_dim;
             snprintf(tmp_str, sizeof tmp_str, "%4.4f/%4.4f/%4.4f", cy_min[d], cy_max[d], cy_avg[d]);
-            printf("%27s%c", tmp_str, (d < dims - 1) ? ',' : ' ');
+            printf("%27s%c", tmp_str, (d < gathered_dims - 1) ? ',' : ' ');
         }
 #endif
 
