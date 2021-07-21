@@ -48,6 +48,10 @@ ifeq ($(strip $(ONLY_FIRST_DIMENSION)),true)
     CPPFLAGS += -DONLY_FIRST_DIMENSION
 endif
 
+ifeq ($(strip $(MEM_TRACER)),true)
+    CPPFLAGS += -DMEM_TRACER
+endif
+
 ${TARGET}: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main.c
 	@echo "===>  LINKING  $(TARGET)"
 	$(Q)${LINKER} ${CPPFLAGS} ${LFLAGS} -o $(TARGET) $(SRC_DIR)/main.c $(OBJ) $(LIBS)

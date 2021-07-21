@@ -80,8 +80,24 @@
 #define PADDING_BYTES 0
 #endif
 
+#ifdef MEM_TRACER
+#   define MEM_TRACER_INIT(stride, size)  FILE *mem_tracer_fp = fopen(get_mem_tracer_filename(stride, size), "w");
+#   define MEM_TRACER_END                 fclose(mem_tracer_fp);
+#   define MEM_TRACE(addr, op)            fprintf(mem_tracer_fp, "%c: %p\n", op, (void *)(&(addr)));
+#else
+#   define MEM_TRACER_INIT
+#   define MEM_TRACER_END
+#   define MEM_TRACE(addr, op)
+#endif
+
 extern void gather_aos(double*, int*, int, double*, long int*);
 extern void gather_soa(double*, int*, int, double*, long int*);
+
+const char *get_mem_tracer_filename(int stride, int size) {
+    static char fname[64];
+    snprintf(fname, sizeof fname, "mem_tracer_%d_%d.txt", stride, size);
+    return fname;
+}
 
 int main (int argc, char** argv) {
     LIKWID_MARKER_INIT;
@@ -132,6 +148,8 @@ int main (int argc, char** argv) {
             N += _VL_ - (N % _VL_);
         }
 
+        MEM_TRACER_INIT(stride, N);
+
         int N_gathers_per_dim = N / _VL_;
         int N_alloc = N * 2;
         int N_cycles_alloc = N_gathers_per_dim * 2;
@@ -164,6 +182,30 @@ int main (int argc, char** argv) {
 #endif
             idx[i] = (i * stride) % N;
         }
+
+#ifdef ONLY_FIRST_DIMENSION
+        const int gathered_dims = 1;
+#else
+        const int gathered_dims = dims;
+#endif
+
+#ifdef MEM_TRACER
+        for(int i = 0; i < N; i += _VL_) {
+            for(int j = 0; j < _VL_; j++) {
+                MEM_TRACE(idx[i + j], 'R');
+            }
+
+            for(int d = 0; d < gathered_dims; d++) {
+                for(int j = 0; j < _VL_; j++) {
+#ifdef AOS
+                    MEM_TRACE(a[idx[i + j] * snbytes + d], 'R');
+#else
+                    MEM_TRACE(a[N * d + idx[i + j]], 'R');
+#endif
+                }
+            }
+        }
+#endif
 
         S = getTimeStamp();
         for(int r = 0; r < 100; ++r) {
@@ -216,12 +258,6 @@ int main (int argc, char** argv) {
         const double size = N * (dims * sizeof(double) + sizeof(int)) / 1000.0;
         printf("%14d,%14.2f,", N, size);
 
-#ifdef ONLY_FIRST_DIMENSION
-        const int gathered_dims = 1;
-#else
-        const int gathered_dims = dims;
-#endif
-
 #ifndef MEASURE_GATHER_CYCLES
         const double time_per_it = time * 1e6 / ((double) N * rep);
         const double cy_per_it = time * freq * _VL_ / ((double) N * rep);
@@ -267,6 +303,8 @@ int main (int argc, char** argv) {
 #ifdef MEASURE_GATHER_CYCLES
         free(cycles);
 #endif
+
+        MEM_TRACER_END;
     }
 
     LIKWID_MARKER_CLOSE;

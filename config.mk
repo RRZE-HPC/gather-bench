@@ -16,5 +16,7 @@ MEASURE_GATHER_CYCLES ?= false
 # Gather data only for first dimension (one gather per iteration)
 ONLY_FIRST_DIMENSION ?= false
 
+# Trace memory addresses for cache simulator
+MEM_TRACER ?= true
 # Test correctness of gather kernels
 TEST ?= false
