@@ -99,6 +99,12 @@ const char *get_mem_tracer_filename(int stride, int size) {
     return fname;
 }
 
+int log2_uint(unsigned int x) {
+    int ans = 0;
+    while(x >>= 1) { ans++; }
+    return ans;
+}
+
 int main (int argc, char** argv) {
     LIKWID_MARKER_INIT;
     LIKWID_MARKER_REGISTER("gather");
@@ -125,7 +131,7 @@ int main (int argc, char** argv) {
 
     printf("ISA,Layout,Stride,Dims,Frequency (GHz),Cache Line Size (B),Vector Width (e),Cache Lines/Gather\n");
     printf("%s,%s,%d,%d,%f,%d,%d,%lu\n\n", ISA_STRING, LAYOUT_STRING, stride, dims, freq, cl_size, _VL_, cacheLinesPerGather);
-    printf("%14s,%14s,", "N", "Size(kB)");
+    printf("%14s,%14s,%14s,", "N", "Size(kB)", "CL touched");
 
 #ifndef MEASURE_GATHER_CYCLES
     printf("%14s,%14s,%14s,%14s,%14s", "tot. time", "time/LUP(ms)", "cy/it", "cy/gather", "cy/elem");
@@ -142,7 +148,7 @@ int main (int argc, char** argv) {
     printf("\n");
     freq = freq * 1e9;
 
-    for(int N = 512; N < 200000; N = 1.5 * N) {
+    for(int N = 512; N < 20000000; N = 1.5 * N) {
         // Currently this only works when the array size (in elements) is multiple of the vector length (no preamble and prelude)
         if(N % _VL_ != 0) {
             N += _VL_ - (N % _VL_);
@@ -207,6 +213,16 @@ int main (int argc, char** argv) {
         }
 #endif
 
+        int cl_touched = 0;
+        const int cl_shift = log2_uint((unsigned int) cl_size);
+        for(int i = 0; i < N; i++) {
+#ifdef AOS
+            cl_touched += ((idx[i] * snbytes) * sizeof(double) >> cl_shift) != ((idx[i] * snbytes + gathered_dims - 1) * sizeof(double) >> cl_shift) ? 2 : 1;
+#else
+            cl_touched += gathered_dims;
+#endif
+        }
+
         S = getTimeStamp();
         for(int r = 0; r < 100; ++r) {
             GATHER(a, idx, N, t, cycles);
@@ -256,7 +272,7 @@ int main (int argc, char** argv) {
 #endif
 
         const double size = N * (dims * sizeof(double) + sizeof(int)) / 1000.0;
-        printf("%14d,%14.2f,", N, size);
+        printf("%14d,%14.2f,%14d,", N, size, cl_touched);
 
 #ifndef MEASURE_GATHER_CYCLES
         const double time_per_it = time * 1e6 / ((double) N * rep);
