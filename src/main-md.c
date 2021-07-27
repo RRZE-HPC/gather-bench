@@ -131,7 +131,7 @@ int main (int argc, char** argv) {
 
     printf("ISA,Layout,Stride,Dims,Frequency (GHz),Cache Line Size (B),Vector Width (e),Cache Lines/Gather\n");
     printf("%s,%s,%d,%d,%f,%d,%d,%lu\n\n", ISA_STRING, LAYOUT_STRING, stride, dims, freq, cl_size, _VL_, cacheLinesPerGather);
-    printf("%14s,%14s,%14s,", "N", "Size(kB)", "CL touched");
+    printf("%14s,%14s,%14s,", "N", "Size(kB)", "cut CLs");
 
 #ifndef MEASURE_GATHER_CYCLES
     printf("%14s,%14s,%14s,%14s,%14s", "tot. time", "time/LUP(ms)", "cy/it", "cy/gather", "cy/elem");
@@ -159,6 +159,7 @@ int main (int argc, char** argv) {
         int N_gathers_per_dim = N / _VL_;
         int N_alloc = N * 2;
         int N_cycles_alloc = N_gathers_per_dim * 2;
+        int cut_cl = 0;
         double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * snbytes * sizeof(double) );
         int* idx = (int*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(int) );
         int rep;
@@ -213,15 +214,16 @@ int main (int argc, char** argv) {
         }
 #endif
 
-        int cl_touched = 0;
+#ifdef AOS
         const int cl_shift = log2_uint((unsigned int) cl_size);
         for(int i = 0; i < N; i++) {
-#ifdef AOS
-            cl_touched += ((idx[i] * snbytes) * sizeof(double) >> cl_shift) != ((idx[i] * snbytes + gathered_dims - 1) * sizeof(double) >> cl_shift) ? 2 : 1;
-#else
-            cl_touched += gathered_dims;
-#endif
+            const int first_cl = (idx[i] * snbytes * sizeof(double)) >> cl_shift;
+            const int last_cl = ((idx[i] * snbytes + gathered_dims - 1) * sizeof(double)) >> cl_shift;
+            if(first_cl != last_cl) {
+                cut_cl++;
+            }
         }
+#endif
 
         S = getTimeStamp();
         for(int r = 0; r < 100; ++r) {
@@ -272,7 +274,7 @@ int main (int argc, char** argv) {
 #endif
 
         const double size = N * (dims * sizeof(double) + sizeof(int)) / 1000.0;
-        printf("%14d,%14.2f,%14d,", N, size, cl_touched);
+        printf("%14d,%14.2f,%14d,", N, size, cut_cl);
 
 #ifndef MEASURE_GATHER_CYCLES
         const double time_per_it = time * 1e6 / ((double) N * rep);
