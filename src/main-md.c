@@ -109,9 +109,9 @@ int log2_uint(unsigned int x) {
 int main (int argc, char** argv) {
     LIKWID_MARKER_INIT;
     LIKWID_MARKER_REGISTER("gather");
-    int opt = 0;
     int stride = 1;
     int cl_size = 64;
+    int opt = 0;
     double freq = 2.5;
     struct option long_opts[] = {
         {"stride", required_argument,   NULL,   's'},
@@ -120,7 +120,7 @@ int main (int argc, char** argv) {
         {"help",   required_argument,   NULL,   'h'}
     };
 
-    while((opt = getopt_long(argc, argv, "s:f:t:l:h", long_opts, NULL)) != -1) {
+    while((opt = getopt_long(argc, argv, "s:f:l:h", long_opts, NULL)) != -1) {
         switch(opt) {
             case 's':
                 stride = atoi(optarg);
