@@ -24,16 +24,17 @@
  *
  * =======================================================================================
  */
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <limits.h>
 #include <float.h>
+#include <getopt.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 //---
 #include <likwid-marker.h>
 //---
-#include <timing.h>
 #include <allocate.h>
+#include <timing.h>
 
 #if !defined(ISA_avx2) && !defined (ISA_avx512)
 #error "Invalid ISA macro, possible values are: avx2 and avx512"
@@ -108,16 +109,46 @@ int log2_uint(unsigned int x) {
 int main (int argc, char** argv) {
     LIKWID_MARKER_INIT;
     LIKWID_MARKER_REGISTER("gather");
+    int opt = 0;
+    int stride = 1;
+    int cl_size = 64;
+    double freq = 2.5;
+    struct option long_opts[] = {
+        {"stride", required_argument,   NULL,   's'},
+        {"freq",   required_argument,   NULL,   'f'},
+        {"line",   required_argument,   NULL,   'l'},
+        {"help",   required_argument,   NULL,   'h'}
+    };
 
-    if (argc < 3) {
-        printf("Please provide stride and frequency\n");
-        printf("%s <stride> <freq (GHz)> [cache line size (B)]\n", argv[0]);
-        return -1;
+    while((opt = getopt_long(argc, argv, "s:f:t:l:h", long_opts, NULL)) != -1) {
+        switch(opt) {
+            case 's':
+                stride = atoi(optarg);
+                break;
+
+            case 'f':
+                freq = atof(optarg);
+                break;
+
+            case 'l':
+                cl_size = atoi(optarg);
+                break;
+
+            case 'h':
+            case '?':
+            default:
+                printf("Usage: %s [OPTION]...\n", argv[0]);
+                printf("MD variant for gather benchmark.\n\n");
+                printf("Mandatory arguments to long options are also mandatory for short options.\n");
+                printf("\t-s, --stride=NUMBER   stride between two successive elements (default 1).\n");
+                printf("\t-f, --freq=REAL       CPU frequency in GHz (default 2.5).\n");
+                printf("\t-l, --line=NUMBER     cache line size in bytes (default 64).\n");
+                printf("\t-h, --help            display this help message.\n");
+                printf("\n\n");
+                return EXIT_FAILURE;
+        }
     }
 
-    int stride = atoi(argv[1]);
-    double freq = atof(argv[2]);
-    int cl_size = (argc == 3) ? 64 : atoi(argv[3]);
     size_t bytesPerWord = sizeof(double);
     const int dims = 3;
     const int snbytes = dims + PADDING_BYTES; // bytes per element (struct), includes padding
@@ -148,7 +179,7 @@ int main (int argc, char** argv) {
     printf("\n");
     freq = freq * 1e9;
 
-    for(int N = 512; N < 20000000; N = 1.5 * N) {
+    for(int N = 512; N < 80000000; N = 1.5 * N) {
         // Currently this only works when the array size (in elements) is multiple of the vector length (no preamble and prelude)
         if(N % _VL_ != 0) {
             N += _VL_ - (N % _VL_);
