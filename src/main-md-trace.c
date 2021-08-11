@@ -69,9 +69,11 @@
 
 #ifdef AOS
 #define GATHER gather_md_aos
+#define LOAD(a, i, d, n) load_aos(&a[i * d])
 #define LAYOUT_STRING "AoS"
 #else
 #define GATHER gather_md_soa
+#define LOAD(a, i, d, n) load_soa(a, i, n)
 #define LAYOUT_STRING "SoA"
 #endif
 
@@ -93,6 +95,8 @@
 
 extern int gather_md_aos(double*, int*, int, double*, int);
 extern int gather_md_soa(double*, int*, int, double*, int);
+extern void load_aos(double*);
+extern void load_soa(double*, int, int);
 
 const char *get_mem_tracer_filename(const char *trace_file) {
     static char fname[64];
@@ -249,6 +253,7 @@ int main (int argc, char** argv) {
     LIKWID_MARKER_START("gather");
     for(int i = 0; i < nlocal; i++) {
         int *neighbors = &neighborlists[i * maxneighs];
+        LOAD(a, i, snbytes, N_alloc);
         t_idx += GATHER(a, neighbors, numneighs[i], &t[t_idx], ntest);
     }
     LIKWID_MARKER_STOP("gather");
