@@ -130,11 +130,11 @@ vgatherdpd zmm2{k3}, [16 + rdi + ymm3 * 8]
 #endif
 
 #ifdef TEST
-vmovupd  [rcx + rax * 8]{k4}{z}, zmm0
+vmovupd  [rcx + rax * 8], zmm0
 lea rbx, [rcx + r8  * 8]
-vmovupd  [rbx + rax * 8]{k5}{z}, zmm1
+vmovupd  [rbx + rax * 8], zmm1
 lea r10, [rbx + r8  * 8]
-vmovupd  [r8  + rax * 8]{k6}{z}, zmm2
+vmovupd  [r8  + rax * 8], zmm2
 #endif
 
 addq rax, r15
@@ -151,5 +151,3 @@ mov  rsp, rbp
 pop rbp
 ret
 .size gather_md_aos, .-gather_md_aos
-
-

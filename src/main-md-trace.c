@@ -254,16 +254,23 @@ int main (int argc, char** argv) {
 
 #ifdef TEST
     int test_failed = 0;
-    for(int i = 0; i < N; ++i) {
-        for(int d = 0; d < dims; ++d) {
+    t_idx = 0;
+    for(int i = 0; i < nlocal; ++i) {
+        int *neighbors = &neighborlists[i * maxneighs];
+        for(int j = 0; j < numneighs[i]; ++j) {
+            int k = neighbors[j];
+            for(int d = 0; d < dims; ++d) {
 #ifdef AOS
-            if(t[d * N + i] != ((i * stride) % N) * dims + d) {
+                if(t[d * N_alloc + t_idx] != k * dims + d) {
 #else
-            if(t[d * N + i] != d * N + ((i * stride) % N)) {
+                if(t[d * N_alloc + t_idx] != d * N + ((i * stride) % N)) {
 #endif
-                test_failed = 1;
-                break;
+                    test_failed = 1;
+                    break;
+                }
             }
+
+            t_idx++;
         }
     }
 
