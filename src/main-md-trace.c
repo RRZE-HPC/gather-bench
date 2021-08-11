@@ -205,7 +205,7 @@ int main (int argc, char** argv) {
             while(line[i] == ' ') { i++; }
             char *neigh_idx = strtok(&line[i], " ");
 
-            while(neigh_idx != NULL) {
+            while(neigh_idx != NULL && *neigh_idx != '\n') {
                 int j = numneighs[atom];
                 neighborlists[atom * maxneighs + j] = atoi(neigh_idx);
                 numneighs[atom]++;
