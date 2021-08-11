@@ -160,11 +160,12 @@ int main (int argc, char** argv) {
     int *numneighs = NULL;
     int atom = -1;
     int nlocal, nghost, nall, maxneighs;
-    const int dims = 3;
-    const int snbytes = dims + PADDING_BYTES; // bytes per element (struct), includes padding
+    size_t ntest = 0;
     size_t llen;
     ssize_t read;
     double time, E, S;
+    const int dims = 3;
+    const int snbytes = dims + PADDING_BYTES; // bytes per element (struct), includes padding
 
     if((fp = fopen(trace_file, "r")) == NULL) {
         fprintf(stderr, "Error: could not open trace file!\n");
@@ -208,6 +209,7 @@ int main (int argc, char** argv) {
                 int j = numneighs[atom];
                 neighborlists[atom * maxneighs + j] = atoi(neigh_idx);
                 numneighs[atom]++;
+                ntest++;
                 neigh_idx = strtok(NULL, " ");
             }
         }
@@ -224,7 +226,8 @@ int main (int argc, char** argv) {
     double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * snbytes * sizeof(double) );
 
 #ifdef TEST
-    double* t = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * dims * sizeof(double) );
+    ntest += 100;
+    double* t = (double*) allocate( ARRAY_ALIGNMENT, ntest * dims * sizeof(double) );
 #else
     double* t = (double*) NULL;
 #endif
@@ -246,7 +249,7 @@ int main (int argc, char** argv) {
     LIKWID_MARKER_START("gather");
     for(int i = 0; i < nlocal; i++) {
         int *neighbors = &neighborlists[i * maxneighs];
-        t_idx += GATHER(a, neighbors, numneighs[i], &t[t_idx], N_alloc);
+        t_idx += GATHER(a, neighbors, numneighs[i], &t[t_idx], ntest);
     }
     LIKWID_MARKER_STOP("gather");
     E = getTimeStamp();
@@ -261,9 +264,9 @@ int main (int argc, char** argv) {
             int k = neighbors[j];
             for(int d = 0; d < dims; ++d) {
 #ifdef AOS
-                if(t[d * N_alloc + t_idx] != k * dims + d) {
+                if(t[d * ntest + t_idx] != k * dims + d) {
 #else
-                if(t[d * N_alloc + t_idx] != d * N + ((i * stride) % N)) {
+                if(t[d * ntest + t_idx] != d * N + k) {
 #endif
                     test_failed = 1;
                     break;

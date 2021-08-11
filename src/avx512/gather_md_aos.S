@@ -17,7 +17,7 @@ SCALAR:
 # rsi -> neighbors
 # rdx -> numneighs[i]
 # rcx -> &t[t_idx]
-# r8  -> N_alloc
+# r8  -> ntest
 .text
 .globl gather_md_aos
 .type gather_md_aos, @function
@@ -87,7 +87,7 @@ vmovupd  [rcx + rax * 8], zmm0
 lea rbx, [rcx + r8  * 8]
 vmovupd  [rbx + rax * 8], zmm1
 lea r10, [rbx + r8  * 8]
-vmovupd  [r8  + rax * 8], zmm2
+vmovupd  [r10 + rax * 8], zmm2
 #endif
 
 # TODO: see if this logic can be optimized
@@ -117,12 +117,6 @@ vpxord    zmm1, zmm1, zmm1
 vpxord    zmm2, zmm2, zmm2
 #endif
 
-#ifdef TEST
-kmovw k4, k1
-kmovw k5, k1
-kmovw k6, k1
-#endif
-
 vgatherdpd zmm0{k1}, [     rdi + ymm3 * 8]
 #ifndef ONLY_FIRST_DIMENSION
 vgatherdpd zmm1{k2}, [8 +  rdi + ymm3 * 8]
@@ -134,7 +128,7 @@ vmovupd  [rcx + rax * 8], zmm0
 lea rbx, [rcx + r8  * 8]
 vmovupd  [rbx + rax * 8], zmm1
 lea r10, [rbx + r8  * 8]
-vmovupd  [r8  + rax * 8], zmm2
+vmovupd  [r10  + rax * 8], zmm2
 #endif
 
 addq rax, r15
