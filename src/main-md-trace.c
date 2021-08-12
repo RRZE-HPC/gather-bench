@@ -229,6 +229,7 @@ int main (int argc, char** argv) {
 
     int N_alloc = nall * 2;
     double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * snbytes * sizeof(double) );
+    double* f = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * dims * sizeof(double) );
 
 #ifdef TEST
     ntest += 100;
@@ -246,6 +247,9 @@ int main (int argc, char** argv) {
         a[N * 1 + i] = N * 1 + i;
         a[N * 2 + i] = N * 2 + i;
 #endif
+        f[i * dims + 0] = 0.0;
+        f[i * dims + 1] = 0.0;
+        f[i * dims + 2] = 0.0;
     }
 
     int t_idx = 0;
@@ -256,6 +260,9 @@ int main (int argc, char** argv) {
             int *neighbors = &neighborlists[i * maxneighs];
             LOAD(a, i, snbytes, N_alloc);
             t_idx += GATHER(a, neighbors, numneighs[i], &t[t_idx], ntest);
+            f[i * dims + 0] += i;
+            f[i * dims + 1] += i;
+            f[i * dims + 2] += i;
         }
     }
     LIKWID_MARKER_STOP("gather");
