@@ -168,6 +168,7 @@ int main (int argc, char** argv) {
     size_t llen;
     ssize_t read;
     double time, E, S;
+    const int rep = 1;
     const int dims = 3;
     const int snbytes = dims + PADDING_BYTES; // bytes per element (struct), includes padding
 
@@ -248,17 +249,53 @@ int main (int argc, char** argv) {
     }
 
     int t_idx = 0;
-    MEM_TRACER_INIT(trace_file);
     S = getTimeStamp();
     LIKWID_MARKER_START("gather");
-    for(int i = 0; i < nlocal; i++) {
-        int *neighbors = &neighborlists[i * maxneighs];
-        LOAD(a, i, snbytes, N_alloc);
-        t_idx += GATHER(a, neighbors, numneighs[i], &t[t_idx], ntest);
+    for(int r = 0; r < rep; r++) {
+        for(int i = 0; i < nlocal; i++) {
+            int *neighbors = &neighborlists[i * maxneighs];
+            LOAD(a, i, snbytes, N_alloc);
+            t_idx += GATHER(a, neighbors, numneighs[i], &t[t_idx], ntest);
+        }
     }
     LIKWID_MARKER_STOP("gather");
     E = getTimeStamp();
     time = E - S;
+
+#ifdef ONLY_FIRST_DIMENSION
+    const int gathered_dims = 1;
+#else
+    const int gathered_dims = dims;
+#endif
+
+#ifdef MEM_TRACER
+    MEM_TRACER_INIT(trace_file);
+    for(int i = 0; i < nlocal; i++) {
+        int *neighbors = &neighborlists[i * maxneighs];
+
+        for(int d = 0; d < gathered_dims; d++) {
+#ifdef AOS
+            MEM_TRACE('R', a[i * snbytes + d])
+#else
+            MEM_TRACE('R', a[d * N + i])
+#endif
+        }
+
+        for(int j = 0; j < numneighs[i]; j += _VL_) {
+            for(int jj = j; jj < MIN(j + _VL_, numneighs[i]); j++) {
+                int k = neighbors[jj];
+                for(int d = 0; d < gathered_dims; d++) {
+#ifdef AOS
+                    MEM_TRACE('R', a[k * snbytes + d])
+#else
+                    MEM_TRACE('R', a[d * N + k])
+#endif
+                }
+            }
+        }
+    }
+    MEM_TRACER_END;
+#endif
 
 #ifdef TEST
     int test_failed = 0;
@@ -288,9 +325,21 @@ int main (int argc, char** argv) {
     } else {
         printf("Test passed!\n");
     }
+
 #endif
 
-    MEM_TRACER_END;
+    int niters = 0;
+    int ngathered = 0;
+    for(int i = 0; i < nlocal; i++) {
+        niters += (numneighs[i] / _VL_) + ((numneighs[i] % _VL_ == 0) ? 0 : 1);
+        ngathered += numneighs[i];
+    }
+
+    const double time_per_it = time * 1e6 / ((double) niters * rep);
+    const double cy_per_it = time * freq * _VL_ / ((double) niters * rep);
+    const double cy_per_gather = time * freq * _VL_ / ((double) niters * rep * gathered_dims);
+    const double cy_per_elem = time * freq / ((double) ngathered * rep * gathered_dims);
+    printf("%14.10f,%14.10f,%14.6f,%14.6f,%14.6f\n", time, time_per_it, cy_per_it, cy_per_gather, cy_per_elem);
     LIKWID_MARKER_CLOSE;
     return EXIT_SUCCESS;
 }
