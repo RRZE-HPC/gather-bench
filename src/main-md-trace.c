@@ -115,16 +115,20 @@ int main (int argc, char** argv) {
     LIKWID_MARKER_REGISTER("gather");
     char *trace_file = NULL;
     int cl_size = 64;
+    int ntimesteps = 200;
+    int reneigh_every = 20;
     int opt = 0;
     double freq = 2.5;
     struct option long_opts[] = {
-        {"trace" , required_argument,   NULL,   't'},
-        {"freq",   required_argument,   NULL,   'f'},
-        {"line",   required_argument,   NULL,   'l'},
-        {"help",   required_argument,   NULL,   'h'}
+        {"trace" ,      required_argument,   NULL,   't'},
+        {"freq",        required_argument,   NULL,   'f'},
+        {"line",        required_argument,   NULL,   'l'},
+        {"timesteps",   required_argument,   NULL,   'n'},
+        {"reneigh",     required_argument,   NULL,   'r'},
+        {"help",        required_argument,   NULL,   'h'}
     };
 
-    while((opt = getopt_long(argc, argv, "t:f:l:h", long_opts, NULL)) != -1) {
+    while((opt = getopt_long(argc, argv, "t:f:l:n:r:h", long_opts, NULL)) != -1) {
         switch(opt) {
             case 't':
                 trace_file = strdup(optarg);
@@ -138,15 +142,25 @@ int main (int argc, char** argv) {
                 cl_size = atoi(optarg);
                 break;
 
+            case 'n':
+                ntimesteps = atoi(optarg);
+                break;
+
+            case 'r':
+                reneigh_every = atoi(optarg);
+                break;
+
             case 'h':
             case '?':
             default:
                 printf("Usage: %s [OPTION]...\n", argv[0]);
                 printf("MD variant for gather benchmark.\n\n");
                 printf("Mandatory arguments to long options are also mandatory for short options.\n");
-                printf("\t-t, --trace-file=STRING   input file with traced indexes from MD-Bench.\n");
+                printf("\t-t, --trace=STRING        input file with traced indexes from MD-Bench.\n");
                 printf("\t-f, --freq=REAL           CPU frequency in GHz (default 2.5).\n");
                 printf("\t-l, --line=NUMBER         cache line size in bytes (default 64).\n");
+                printf("\t-n, --timesteps=NUMBER    number of timesteps to simulate (default 200).\n");
+                printf("\t-r, --reneigh=NUMBER      reneighboring frequency in timesteps (default 20).\n");
                 printf("\t-h, --help                display this help message.\n");
                 printf("\n\n");
                 return EXIT_FAILURE;
@@ -163,99 +177,113 @@ int main (int argc, char** argv) {
     int *neighborlists = NULL;
     int *numneighs = NULL;
     int atom = -1;
-    int nlocal, nghost, nall, maxneighs;
+    int nlocal, nghost, maxneighs;
+    int nall = 0;
+    int N_alloc = 0;
     size_t ntest = 0;
     size_t llen;
     ssize_t read;
-    double time, E, S;
-    const int rep = 1;
+    double *a = NULL;
+    double *f = NULL;
+    double *t = NULL;
+    double time = 0.0;
+    double E, S;
     const int dims = 3;
     const int snbytes = dims + PADDING_BYTES; // bytes per element (struct), includes padding
+    long long int niters = 0;
+    long long int ngathered = 0;
 
-    if((fp = fopen(trace_file, "r")) == NULL) {
-        fprintf(stderr, "Error: could not open trace file!\n");
-        return EXIT_FAILURE;
-    }
-
-    while((read = getline(&line, &llen, fp)) != -1) {
-        int i = 2;
-        if(strncmp(line, "N:", 2) == 0) {
-            while(line[i] == ' ') { i++; }
-            nlocal = atoi(strtok(&line[i], " "));
-            nghost = atoi(strtok(NULL, " "));
-            maxneighs = atoi(strtok(NULL, " "));
-            nall = nlocal + nghost;
-
-            if(neighborlists != NULL || numneighs != NULL) {
-                fprintf(stderr, "Number of atoms and neighbor lists capacity defined more than once!");
-                return EXIT_FAILURE;
-            }
-
-            if(nlocal <= 0 || maxneighs <= 0) {
-                fprintf(stderr, "Number of local atoms and neighbor lists capacity cannot be less or equal than zero!");
-                return EXIT_FAILURE;
-            }
-
-            neighborlists = (int *) allocate( ARRAY_ALIGNMENT, nlocal * maxneighs * sizeof(int) );
-            numneighs = (int *) allocate( ARRAY_ALIGNMENT, nlocal * sizeof(int) );
-        }
-
-        if(strncmp(line, "A:", 2) == 0) {
-            while(line[i] == ' ') { i++; }
-            atom = atoi(strtok(&line[i], " "));
-            numneighs[atom] = 0;
-        }
-
-        if(strncmp(line, "I:", 2) == 0) {
-            while(line[i] == ' ') { i++; }
-            char *neigh_idx = strtok(&line[i], " ");
-
-            while(neigh_idx != NULL && *neigh_idx != '\n') {
-                int j = numneighs[atom];
-                neighborlists[atom * maxneighs + j] = atoi(neigh_idx);
-                numneighs[atom]++;
-                ntest++;
-                neigh_idx = strtok(NULL, " ");
-            }
-        }
-    }
-
-    fclose(fp);
     printf("ISA,Layout,Dims,Frequency (GHz),Cache Line Size (B),Vector Width (e)\n");
     printf("%s,%s,%d,%f,%d,%d\n\n", ISA_STRING, LAYOUT_STRING, dims, freq, cl_size, _VL_);
-    printf("%14s,%14s,%14s,%14s,%14s", "tot. time", "time/LUP(ms)", "cy/it", "cy/gather", "cy/elem");
-    printf("\n");
     freq = freq * 1e9;
 
-    int N_alloc = nall * 2;
-    double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * snbytes * sizeof(double) );
-    double* f = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * dims * sizeof(double) );
+    #ifdef ONLY_FIRST_DIMENSION
+    const int gathered_dims = 1;
+    #else
+    const int gathered_dims = dims;
+    #endif
 
-#ifdef TEST
-    ntest += 100;
-    double* t = (double*) allocate( ARRAY_ALIGNMENT, ntest * dims * sizeof(double) );
-#else
-    double* t = (double*) NULL;
-#endif
-    for(int i = 0; i < N_alloc; ++i) {
-#ifdef AOS
-        a[i * snbytes + 0] = i * dims + 0;
-        a[i * snbytes + 1] = i * dims + 1;
-        a[i * snbytes + 2] = i * dims + 2;
-#else
-        a[N * 0 + i] = N * 0 + i;
-        a[N * 1 + i] = N * 1 + i;
-        a[N * 2 + i] = N * 2 + i;
-#endif
-        f[i * dims + 0] = 0.0;
-        f[i * dims + 1] = 0.0;
-        f[i * dims + 2] = 0.0;
-    }
+    for(int ts = 0; ts < ntimesteps; ts++) {
+        if(!(ts % reneigh_every)) {
+            char ts_trace_file[128];
+            snprintf(ts_trace_file, sizeof ts_trace_file, "%s_%d.out", trace_file, ts);
+            if((fp = fopen(ts_trace_file, "r")) == NULL) {
+                fprintf(stderr, "Error: could not open trace file!\n");
+                return EXIT_FAILURE;
+            }
 
-    int t_idx = 0;
-    S = getTimeStamp();
-    LIKWID_MARKER_START("gather");
-    for(int r = 0; r < rep; r++) {
+            while((read = getline(&line, &llen, fp)) != -1) {
+                int i = 2;
+                if(strncmp(line, "N:", 2) == 0) {
+                    while(line[i] == ' ') { i++; }
+                    nlocal = atoi(strtok(&line[i], " "));
+                    nghost = atoi(strtok(NULL, " "));
+                    nall = nlocal + nghost;
+                    maxneighs = atoi(strtok(NULL, " "));
+
+                    if(nlocal <= 0 || maxneighs <= 0) {
+                        fprintf(stderr, "Number of local atoms and neighbor lists capacity cannot be less or equal than zero!\n");
+                        return EXIT_FAILURE;
+                    }
+
+                    if(neighborlists == NULL) {
+                        neighborlists = (int *) allocate( ARRAY_ALIGNMENT, nlocal * maxneighs * sizeof(int) );
+                        numneighs = (int *) allocate( ARRAY_ALIGNMENT, nlocal * sizeof(int) );
+                    }
+                }
+
+                if(strncmp(line, "A:", 2) == 0) {
+                    while(line[i] == ' ') { i++; }
+                    atom = atoi(strtok(&line[i], " "));
+                    numneighs[atom] = 0;
+                }
+
+                if(strncmp(line, "I:", 2) == 0) {
+                    while(line[i] == ' ') { i++; }
+                    char *neigh_idx = strtok(&line[i], " ");
+
+                    while(neigh_idx != NULL && *neigh_idx != '\n') {
+                        int j = numneighs[atom];
+                        neighborlists[atom * maxneighs + j] = atoi(neigh_idx);
+                        numneighs[atom]++;
+                        ntest++;
+                        neigh_idx = strtok(NULL, " ");
+                    }
+                }
+            }
+
+            fclose(fp);
+        }
+
+        if(N_alloc == 0) {
+            N_alloc = nall * 2;
+            a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * snbytes * sizeof(double) );
+            f = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * dims * sizeof(double) );
+
+            #ifdef TEST
+            ntest += 100;
+            t = (double*) allocate( ARRAY_ALIGNMENT, ntest * dims * sizeof(double) );
+            #endif
+        }
+
+        for(int i = 0; i < N_alloc; ++i) {
+            #ifdef AOS
+            a[i * snbytes + 0] = i * dims + 0;
+            a[i * snbytes + 1] = i * dims + 1;
+            a[i * snbytes + 2] = i * dims + 2;
+            #else
+            a[N * 0 + i] = N * 0 + i;
+            a[N * 1 + i] = N * 1 + i;
+            a[N * 2 + i] = N * 2 + i;
+            #endif
+            f[i * dims + 0] = 0.0;
+            f[i * dims + 1] = 0.0;
+            f[i * dims + 2] = 0.0;
+        }
+
+        int t_idx = 0;
+        S = getTimeStamp();
+        LIKWID_MARKER_START("gather");
         for(int i = 0; i < nlocal; i++) {
             int *neighbors = &neighborlists[i * maxneighs];
             LOAD(a, i, snbytes, N_alloc);
@@ -264,89 +292,83 @@ int main (int argc, char** argv) {
             f[i * dims + 1] += i;
             f[i * dims + 2] += i;
         }
-    }
-    LIKWID_MARKER_STOP("gather");
-    E = getTimeStamp();
-    time = E - S;
+        LIKWID_MARKER_STOP("gather");
+        E = getTimeStamp();
+        time += E - S;
 
-#ifdef ONLY_FIRST_DIMENSION
-    const int gathered_dims = 1;
-#else
-    const int gathered_dims = dims;
-#endif
+        #ifdef MEM_TRACER
+        MEM_TRACER_INIT(trace_file);
+        for(int i = 0; i < nlocal; i++) {
+            int *neighbors = &neighborlists[i * maxneighs];
 
-#ifdef MEM_TRACER
-    MEM_TRACER_INIT(trace_file);
-    for(int i = 0; i < nlocal; i++) {
-        int *neighbors = &neighborlists[i * maxneighs];
+            for(int d = 0; d < gathered_dims; d++) {
+                #ifdef AOS
+                MEM_TRACE('R', a[i * snbytes + d])
+                #else
+                MEM_TRACE('R', a[d * N + i])
+                #endif
+            }
 
-        for(int d = 0; d < gathered_dims; d++) {
-#ifdef AOS
-            MEM_TRACE('R', a[i * snbytes + d])
-#else
-            MEM_TRACE('R', a[d * N + i])
-#endif
-        }
-
-        for(int j = 0; j < numneighs[i]; j += _VL_) {
-            for(int jj = j; jj < MIN(j + _VL_, numneighs[i]); j++) {
-                int k = neighbors[jj];
-                for(int d = 0; d < gathered_dims; d++) {
-#ifdef AOS
-                    MEM_TRACE('R', a[k * snbytes + d])
-#else
-                    MEM_TRACE('R', a[d * N + k])
-#endif
+            for(int j = 0; j < numneighs[i]; j += _VL_) {
+                for(int jj = j; jj < MIN(j + _VL_, numneighs[i]); j++) {
+                    int k = neighbors[jj];
+                    for(int d = 0; d < gathered_dims; d++) {
+                        #ifdef AOS
+                        MEM_TRACE('R', a[k * snbytes + d])
+                        #else
+                        MEM_TRACE('R', a[d * N + k])
+                        #endif
+                    }
                 }
             }
         }
-    }
-    MEM_TRACER_END;
-#endif
+        MEM_TRACER_END;
+        #endif
 
-#ifdef TEST
-    int test_failed = 0;
-    t_idx = 0;
-    for(int i = 0; i < nlocal; ++i) {
-        int *neighbors = &neighborlists[i * maxneighs];
-        for(int j = 0; j < numneighs[i]; ++j) {
-            int k = neighbors[j];
-            for(int d = 0; d < dims; ++d) {
-#ifdef AOS
-                if(t[d * ntest + t_idx] != k * dims + d) {
-#else
-                if(t[d * ntest + t_idx] != d * N + k) {
-#endif
-                    test_failed = 1;
-                    break;
+        #ifdef TEST
+        int test_failed = 0;
+        t_idx = 0;
+        for(int i = 0; i < nlocal; ++i) {
+            int *neighbors = &neighborlists[i * maxneighs];
+            for(int j = 0; j < numneighs[i]; ++j) {
+                int k = neighbors[j];
+                for(int d = 0; d < dims; ++d) {
+                    #ifdef AOS
+                    if(t[d * ntest + t_idx] != k * dims + d) {
+                    #else
+                    if(t[d * ntest + t_idx] != d * N + k) {
+                    #endif
+                        test_failed = 1;
+                        break;
+                    }
                 }
-            }
 
-            t_idx++;
+                t_idx++;
+            }
+        }
+
+        if(test_failed) {
+            printf("Test failed!\n");
+            return EXIT_FAILURE;
+        } else {
+            printf("Test passed!\n");
+        }
+        #endif
+
+        for(int i = 0; i < nlocal; i++) {
+            niters += (numneighs[i] / _VL_) + ((numneighs[i] % _VL_ == 0) ? 0 : 1);
+            ngathered += numneighs[i];
         }
     }
 
-    if(test_failed) {
-        printf("Test failed!\n");
-        return EXIT_FAILURE;
-    } else {
-        printf("Test passed!\n");
-    }
-
-#endif
-
-    int niters = 0;
-    int ngathered = 0;
-    for(int i = 0; i < nlocal; i++) {
-        niters += (numneighs[i] / _VL_) + ((numneighs[i] % _VL_ == 0) ? 0 : 1);
-        ngathered += numneighs[i];
-    }
-
-    const double time_per_it = time * 1e6 / ((double) niters * rep);
-    const double cy_per_it = time * freq * _VL_ / ((double) niters * rep);
-    const double cy_per_gather = time * freq * _VL_ / ((double) niters * rep * gathered_dims);
-    const double cy_per_elem = time * freq / ((double) ngathered * rep * gathered_dims);
-    printf("%14.10f,%14.10f,%14.6f,%14.6f,%14.6f\n", time, time_per_it, cy_per_it, cy_per_gather, cy_per_elem);
+    printf("%14s,%14s,%14s,%14s,%14s,%14s", "tot. time(s)", "time/step(ms)", "time/iter(us)", "cy/it", "cy/gather", "cy/elem");
+    printf("\n");
+    const double time_per_step = time * 1e3 / ((double) ntimesteps);
+    const double time_per_it = time * 1e6 / ((double) niters);
+    const double cy_per_it = time * freq * _VL_ / ((double) niters);
+    const double cy_per_gather = time * freq * _VL_ / ((double) niters * gathered_dims);
+    const double cy_per_elem = time * freq / ((double) ngathered * gathered_dims);
+    printf("%14.6f,%14.6f,%14.6f,%14.6f,%14.6f,%14.6f\n", time, time_per_step, time_per_it, cy_per_it, cy_per_gather, cy_per_elem);
     LIKWID_MARKER_CLOSE;
     return EXIT_SUCCESS;
 }
