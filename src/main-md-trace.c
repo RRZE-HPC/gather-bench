@@ -259,12 +259,13 @@ int main (int argc, char** argv) {
             N_alloc = nall * 2;
             a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * snbytes * sizeof(double) );
             f = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * dims * sizeof(double) );
-
-            #ifdef TEST
-            ntest += 100;
-            t = (double*) allocate( ARRAY_ALIGNMENT, ntest * dims * sizeof(double) );
-            #endif
         }
+
+        #ifdef TEST
+        if(t != NULL) { free(t); }
+        ntest += 100;
+        t = (double*) allocate( ARRAY_ALIGNMENT, ntest * dims * sizeof(double) );
+        #endif
 
         for(int i = 0; i < N_alloc; ++i) {
             #ifdef AOS
@@ -350,8 +351,6 @@ int main (int argc, char** argv) {
         if(test_failed) {
             printf("Test failed!\n");
             return EXIT_FAILURE;
-        } else {
-            printf("Test passed!\n");
         }
         #endif
 
@@ -369,6 +368,11 @@ int main (int argc, char** argv) {
     const double cy_per_gather = time * freq * _VL_ / ((double) niters * gathered_dims);
     const double cy_per_elem = time * freq / ((double) ngathered * gathered_dims);
     printf("%14.6f,%14.6f,%14.6f,%14.6f,%14.6f,%14.6f\n", time, time_per_step, time_per_it, cy_per_it, cy_per_gather, cy_per_elem);
+
+    #ifdef TEST
+    printf("Test passed!\n");
+    #endif
+
     LIKWID_MARKER_CLOSE;
     return EXIT_SUCCESS;
 }
