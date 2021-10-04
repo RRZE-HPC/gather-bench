@@ -203,10 +203,10 @@ int main (int argc, char** argv) {
     const int gathered_dims = dims;
     #endif
 
-    for(int ts = 0; ts < ntimesteps; ts++) {
-        if(!(ts % reneigh_every)) {
+    for(int ts = -1; ts < ntimesteps; ts++) {
+        if(!((ts + 1) % reneigh_every)) {
             char ts_trace_file[128];
-            snprintf(ts_trace_file, sizeof ts_trace_file, "%s_%d.out", trace_file, ts);
+            snprintf(ts_trace_file, sizeof ts_trace_file, "%s_%d.out", trace_file, ts + 1);
             if((fp = fopen(ts_trace_file, "r")) == NULL) {
                 fprintf(stderr, "Error: could not open trace file!\n");
                 return EXIT_FAILURE;
