@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <x86intrin.h>
 //---
 #include <likwid-marker.h>
 //---
@@ -93,10 +94,10 @@
 #   define MEM_TRACE(addr, op)
 #endif
 
-extern int gather_md_aos(double*, int*, int, double*, int);
-extern int gather_md_soa(double*, int*, int, double*, int);
-extern void load_aos(double*);
-extern void load_soa(double*, int, int);
+int gather_md_aos(double*, int*, int, double*, int);
+int gather_md_soa(double*, int*, int, double*, int);
+void load_aos(double*);
+void load_soa(double*, int, int);
 
 const char *get_mem_tracer_filename(const char *trace_file) {
     static char fname[64];
@@ -287,8 +288,70 @@ int main (int argc, char** argv) {
         LIKWID_MARKER_START("gather");
         for(int i = 0; i < nlocal; i++) {
             int *neighbors = &neighborlists[i * maxneighs];
+            // We inline the assembly for AVX512 with AoS layout to evaluate the impact
+            // of calling external assembly procedures in the overall runtime
+            #ifdef ISA_avx512
+            __m256i ymm_reg_mask = _mm256_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7);
+            __asm__ __volatile__(   "vmovsd 0(%0), %%xmm3;"
+                                    "vmovsd 8(%0), %%xmm4;"
+                                    "vmovsd 16(%0), %%xmm5;"
+                                    "vbroadcastsd %%xmm3, %%zmm0;"
+                                    "vbroadcastsd %%xmm4, %%zmm1;"
+                                    "vbroadcastsd %%xmm5, %%zmm2;"
+                                    :
+                                    : "r" (&a[i * snbytes])
+                                    : "%xmm3", "%xmm4", "%xmm5", "%zmm0", "%zmm1", "%zmm2"  );
+
+            __asm__ __volatile__(   "xor %%rax, %%rax;"
+                                    "movq %%rdx, %%r15;"
+                                    "1: vmovdqu (%1,%%rax,4), %%ymm3;"
+                                    "vpaddd %%ymm3, %%ymm3, %%ymm4;"
+                                    #ifdef PADDING
+                                    "vpaddd %%ymm4, %%ymm4, %%ymm3;"
+                                    #else
+                                    "vpaddd %%ymm3, %%ymm4, %%ymm3;"
+                                    #endif
+                                    "vpcmpeqb %%xmm5, %%xmm5, %%k1;"
+                                    "vpcmpeqb %%xmm5, %%xmm5, %%k2;"
+                                    "vpcmpeqb %%xmm5, %%xmm5, %%k3;"
+                                    "vpxord %%zmm0, %%zmm0, %%zmm0;"
+                                    "vpxord %%zmm1, %%zmm1, %%zmm1;"
+                                    "vpxord %%zmm2, %%zmm2, %%zmm2;"
+                                    "vgatherdpd (%3, %%ymm3, 8), %%zmm0{{%%k1}};"
+                                    "vgatherdpd 8(%3, %%ymm3, 8), %%zmm1{{%%k2}};"
+                                    "vgatherdpd 16(%3, %%ymm3, 8), %%zmm2{{%%k3}};"
+                                    "addq $8, %%rax;"
+                                    "subq $8, %%r15;"
+                                    "cmpq $8, %%r15;"
+                                    "jge 1b;"
+                                    "cmpq $0, %%r15;"
+                                    "jle 2;"
+                                    "vpbroadcastd %%r15d, %%ymm5;"
+                                    "vpcmpgtd %%ymm5, %2, %%k1;"
+                                    "vmovdqu32 (%1,%%rax,4), %%ymm3{{%%k1}}{{z}};"
+                                    "vpaddd %%ymm3, %%ymm3, %%ymm4;"
+                                    #ifdef PADDING
+                                    "vpaddd %%ymm4, %%ymm4, %%ymm3;"
+                                    #else
+                                    "vpaddd %%ymm3, %%ymm4, %%ymm3;"
+                                    #endif
+                                    "vpxord %%zmm0, %%zmm0, %%zmm0;"
+                                    "kmovw %%k1, %%k2;"
+                                    "kmovw %%k1, %%k3;"
+                                    "vpxord %%zmm1, %%zmm1, %%zmm1;"
+                                    "vpxord %%zmm2, %%zmm2, %%zmm2;"
+                                    "vgatherdpd (%3, %%ymm3, 8), %%zmm0{{%%k1}};"
+                                    "vgatherdpd 8(%3, %%ymm3, 8), %%zmm1{{%%k2}};"
+                                    "vgatherdpd 16(%3, %%ymm3, 8), %%zmm2{{%%k3}};"
+                                    "addq %%r15, %%rax;"
+                                    "2:;"
+                                    :
+                                    : "d" (numneighs[i]), "r" (neighbors), "x" (ymm_reg_mask), "r" (a)
+                                    : "%rax", "%r15", "%ymm3", "%ymm4", "%ymm5", "%k1", "%k2", "%k3", "%zmm0", "%zmm1", "%zmm2" );
+            #else
             LOAD(a, i, snbytes, N_alloc);
             t_idx += GATHER(a, neighbors, numneighs[i], &t[t_idx], ntest);
+            #endif
             f[i * dims + 0] += i;
             f[i * dims + 1] += i;
             f[i * dims + 2] += i;
