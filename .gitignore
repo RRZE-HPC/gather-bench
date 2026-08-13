@@ -50,3 +50,8 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# GPU (CUDA/HIP) build artifacts
+gpu/cuda-gather-bench
+gpu/hip-gather-bench
+gpu/main.hip
