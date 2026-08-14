@@ -36,8 +36,8 @@
 #include <allocate.h>
 #include <timing.h>
 
-#if !defined(ISA_avx2) && !defined (ISA_avx512)
-#error "Invalid ISA macro, possible values are: avx2 and avx512"
+#if !defined(ISA_avx2) && !defined (ISA_avx512) && !defined(ISA_sve)
+#error "Invalid ISA macro, possible values are: avx2, avx512 and sve"
 #endif
 
 #if defined(TEST) && defined(ONLY_FIRST_DIMENSION)
@@ -59,9 +59,12 @@
 #define ARRAY_ALIGNMENT  64
 #define SIZE  20000
 
-#ifdef ISA_avx512
+#if defined(ISA_avx512)
 #define _VL_  8
 #define ISA_STRING "avx512"
+#elif defined(ISA_sve)
+#define _VL_  2
+#define ISA_STRING "sve"
 #else
 #define _VL_  4
 #define ISA_STRING "avx2"
@@ -218,7 +221,7 @@ int main (int argc, char** argv) {
             a[N * 1 + i] = N * 1 + i;
             a[N * 2 + i] = N * 2 + i;
 #endif
-            idx[i] = (i * stride) % N;
+            idx[i] = (int)(((long) i * stride) % N);
         }
 
 #ifdef ONLY_FIRST_DIMENSION

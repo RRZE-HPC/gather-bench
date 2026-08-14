@@ -1,6 +1,6 @@
 # Supported: GCC, CLANG, ICC
 TAG ?= ICC
-# Supported: avx2, avx512
+# Supported: avx2, avx512, sve
 ISA ?= avx512
 # Use likwid?
 ENABLE_LIKWID ?= false

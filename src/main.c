@@ -35,8 +35,8 @@
 #include <timing.h>
 #include <allocate.h>
 
-#if !defined(ISA_avx2) && !defined (ISA_avx512)
-#error "Invalid ISA macro, possible values are: avx2 and avx512"
+#if !defined(ISA_avx2) && !defined (ISA_avx512) && !defined(ISA_sve)
+#error "Invalid ISA macro, possible values are: avx2, avx512 and sve"
 #endif
 
 #define HLINE "----------------------------------------------------------------------------\n"
@@ -54,9 +54,12 @@
 #define ARRAY_ALIGNMENT  64
 #define SIZE  20000
 
-#ifdef ISA_avx512
+#if defined(ISA_avx512)
 #define _VL_  8
 #define ISA_STRING "avx512"
+#elif defined(ISA_sve)
+#define _VL_  2
+#define ISA_STRING "sve"
 #else
 #define _VL_  4
 #define ISA_STRING "avx2"
@@ -104,7 +107,7 @@ int main (int argc, char** argv) {
 
         for(int i = 0; i < N_alloc; ++i) {
             a[i] = i;
-            idx[i] = (i * stride) % N;
+            idx[i] = (int)(((long) i * stride) % N);
         }
 
         S = getTimeStamp();
