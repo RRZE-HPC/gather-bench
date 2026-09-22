@@ -5,6 +5,12 @@ ISA ?= avx512
 # Use likwid?
 ENABLE_LIKWID ?= false
 
+# asm: hand-written per-ISA assembly kernels (DP only, fixed unroll, no masking).
+# intrinsic: C++ intrinsics kernel, supports DATA_TYPE=SP, UNROLL, and the mask sweep.
+KERNEL ?= asm
+# Unroll factor for the intrinsic kernel (1, 2, 4 or 8). Ignored by KERNEL=asm.
+UNROLL ?= 4
+
 # SP or DP
 DATA_TYPE ?= DP
 # AOS or SOA

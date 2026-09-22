@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <getopt.h>
 #include <limits.h>
 #include <float.h>
 //---
@@ -52,8 +53,29 @@
 #endif
 
 #define ARRAY_ALIGNMENT  64
-#define SIZE  20000
 
+#if defined(DATA_TYPE_SP)
+typedef float real_t;
+#define REAL_STRING "SP"
+#else
+typedef double real_t;
+#define REAL_STRING "DP"
+#endif
+
+// The hand-written asm kernels are DP-only and fix their own unroll factor;
+// the intrinsic kernel's vector length also depends on DATA_TYPE.
+#if defined(KERNEL_INTRINSIC) && defined(DATA_TYPE_SP)
+#if defined(ISA_avx512)
+#define _VL_  16
+#define ISA_STRING "avx512"
+#elif defined(ISA_sve)
+#define _VL_  4
+#define ISA_STRING "sve"
+#else
+#define _VL_  8
+#define ISA_STRING "avx2"
+#endif
+#else
 #if defined(ISA_avx512)
 #define _VL_  8
 #define ISA_STRING "avx512"
@@ -64,99 +86,167 @@
 #define _VL_  4
 #define ISA_STRING "avx2"
 #endif
-
-#ifdef TEST
-extern void gather(double*, int*, int, double*);
-#else
-extern void gather(double*, int*, int);
 #endif
+
+#ifdef KERNEL_INTRINSIC
+extern void gather_intrinsic(real_t*, int*, int, real_t*, int);
+#define GATHER(a, idx, n, t, active) gather_intrinsic(a, idx, n, t, active)
+#define KERNEL_STRING "intrinsic"
+#else
+#ifdef TEST
+extern void gather(real_t*, int*, int, real_t*);
+#define GATHER(a, idx, n, t, active) gather(a, idx, n, t)
+#else
+extern void gather(real_t*, int*, int);
+#define GATHER(a, idx, n, t, active) gather(a, idx, n)
+#endif
+#define KERNEL_STRING "asm"
+#endif
+
+static void usage(const char* prog) {
+    printf("X86/ARM gather instruction performance benchmark.\n\n");
+    printf("Usage: %s -s NUMBER -f REAL [OPTION]...\n\n", prog);
+    printf("\t-s, --stride=NUMBER    stride between two successive indices (required).\n");
+    printf("\t-f, --freq=REAL        CPU frequency in GHz (required).\n");
+    printf("\t-l, --line=NUMBER      cache line size in bytes (default 64).\n");
+    printf("\t-u, --unique=NUMBER    number of distinct indices per %d-wide lane group\n", _VL_);
+    printf("\t                       (1..%d, default %d = fully distinct/no duplicates).\n", _VL_, _VL_);
+    printf("\t-h, --help             display this help message.\n");
+}
 
 int main (int argc, char** argv) {
     LIKWID_MARKER_INIT;
     LIKWID_MARKER_REGISTER("gather");
 
-    if (argc < 3) {
-        printf("Please provide stride and frequency\n");
-        printf("%s <stride> <freq (GHz)> [cache line size (B)]\n", argv[0]);
-        return -1;
+    int stride = 0;
+    double freq = 0.0;
+    int cl_size = 64;
+    int unique = _VL_;
+    int have_stride = 0, have_freq = 0;
+    int opt;
+    struct option long_opts[] = {
+        {"stride", required_argument, NULL, 's'},
+        {"freq",   required_argument, NULL, 'f'},
+        {"line",   required_argument, NULL, 'l'},
+        {"unique", required_argument, NULL, 'u'},
+        {"help",   no_argument,       NULL, 'h'},
+        {NULL, 0, NULL, 0}
+    };
+
+    while ((opt = getopt_long(argc, argv, "s:f:l:u:h", long_opts, NULL)) != -1) {
+        switch (opt) {
+            case 's': stride = atoi(optarg); have_stride = 1; break;
+            case 'f': freq = atof(optarg); have_freq = 1; break;
+            case 'l': cl_size = atoi(optarg); break;
+            case 'u': unique = atoi(optarg); break;
+            case 'h': usage(argv[0]); return EXIT_SUCCESS;
+            default: usage(argv[0]); return EXIT_FAILURE;
+        }
     }
 
-    int stride = atoi(argv[1]);
-    double freq = atof(argv[2]);
-    int cl_size = (argc == 3) ? 64 : atoi(argv[3]);
-    size_t bytesPerWord = sizeof(double);
-    size_t cacheLinesPerGather = MIN(MAX(stride * _VL_ / (cl_size / sizeof(double)), 1), _VL_);
-    size_t N = SIZE;
+    if (!have_stride || !have_freq) {
+        fprintf(stderr, "Error: --stride and --freq are required\n\n");
+        usage(argv[0]);
+        return EXIT_FAILURE;
+    }
+    if (unique < 1 || unique > _VL_) {
+        fprintf(stderr, "Error: --unique must be between 1 and %d\n", _VL_);
+        return EXIT_FAILURE;
+    }
+
+    size_t bytesPerWord = sizeof(real_t);
+    size_t cacheLinesPerGather = MIN(MAX(stride * _VL_ / (cl_size / bytesPerWord), 1), _VL_);
     double E, S;
 
-    printf("ISA,Stride (elems),Frequency (GHz),Cache Line Size (B),Vector Width (elems),Cache Lines/Gather\n");
-    printf("%s,%d,%f,%d,%d,%lu\n\n", ISA_STRING, stride, freq, cl_size, _VL_, cacheLinesPerGather);
-    printf("%14s,%14s,%14s,%14s,%14s,%14s\n", "N", "Size(kB)", "tot. time", "time/LUP(ms)", "cy/gather", "cy/elem");
+    printf("ISA,Kernel,DataType,Stride (elems),Frequency (GHz),Cache Line Size (B),Vector Width (elems),Cache Lines/Gather,Unique idx/group\n");
+    printf("%s,%s,%s,%d,%f,%d,%d,%lu,%d\n\n", ISA_STRING, KERNEL_STRING, REAL_STRING, stride, freq, cl_size, _VL_, cacheLinesPerGather, unique);
+    printf("%14s,%14s,%14s,%14s,%14s,%14s,%14s,%14s\n", "N", "Mask", "Size(kB)", "tot. time", "time/LUP(ms)", "GB/s", "cy/gather", "cy/elem");
 
     freq = freq * 1e9;
+#ifdef KERNEL_INTRINSIC
+    const int mask_lo = 1, mask_hi = _VL_;
+#else
+    const int mask_lo = _VL_, mask_hi = _VL_; // asm kernel has no masking support: single, fully-active row
+#endif
+
     for(int N = 1024; N < 400000; N = 1.5 * N) {
         int N_alloc = N * 2;
-        double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(double) );
+        real_t* a = (real_t*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(real_t) );
         int* idx = (int*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(int) );
         int rep;
         double time;
 
 #ifdef TEST
-        double* t = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(double) );
+        real_t* t = (real_t*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(real_t) );
+#else
+        real_t* t = NULL;
 #endif
 
         for(int i = 0; i < N_alloc; ++i) {
-            a[i] = i;
-            idx[i] = (int)(((long) i * stride) % N);
+            a[i] = (real_t) i;
+            const int group_base = (i / _VL_) * _VL_;
+            const int lane = i % _VL_;
+            const int li = group_base + (lane % unique);
+            idx[i] = (int)(((long) li * stride) % N);
         }
 
-        S = getTimeStamp();
-        for(int r = 0; r < 100; ++r) {
-#ifdef TEST
-            gather(a, idx, N, t);
-#else
-            gather(a, idx, N);
-#endif
-        }
-        E = getTimeStamp();
+        // Warmup, not timed (mirrors the GPU benchmark's explicit warmup call).
+        GATHER(a, idx, N, t, _VL_);
 
-        rep = 100 * (0.5 / (E - S));
-        S = getTimeStamp();
-        LIKWID_MARKER_START("gather");
-        for(int r = 0; r < rep; ++r) {
-#ifdef TEST
-            gather(a, idx, N, t);
-#else
-            gather(a, idx, N);
-#endif
-        }
-        LIKWID_MARKER_STOP("gather");
-        E = getTimeStamp();
+        // Sweeping every mask value multiplies the number of measurements per N
+        // by up to _VL_; shorten the per-measurement target so a full mask sweep
+        // doesn't take _VL_ times as long in wall-clock terms as a single run.
+        const double target_s = (mask_hi > mask_lo) ? (0.5 / _VL_) : 0.5;
 
-        time = E - S;
-
-#ifdef TEST
-        int test_failed = 0;
-        for(int i = 0; i < N; ++i) {
-            if(t[i] != i * stride % N) {
-                test_failed = 1;
-                break;
+        for(int active = mask_lo; active <= mask_hi; ++active) {
+            S = getTimeStamp();
+            for(int r = 0; r < 100; ++r) {
+                GATHER(a, idx, N, t, active);
             }
-        }
+            E = getTimeStamp();
 
-        if(test_failed) {
-            printf("Test failed!\n");
-            return EXIT_FAILURE;
-        } else {
-            printf("Test passed!\n");
-        }
+            rep = 100 * (target_s / (E - S));
+            S = getTimeStamp();
+            LIKWID_MARKER_START("gather");
+            for(int r = 0; r < rep; ++r) {
+                GATHER(a, idx, N, t, active);
+            }
+            LIKWID_MARKER_STOP("gather");
+            E = getTimeStamp();
+
+            time = E - S;
+
+#ifdef TEST
+            int test_failed = 0;
+            for(int i = 0; i < N; ++i) {
+                const int group_base = (i / _VL_) * _VL_;
+                const int lane = i % _VL_;
+                if (lane >= active) continue; // masked-off lanes are not gathered, skip verification
+                const int li = group_base + (lane % unique);
+                const int expected_idx = (int)(((long) li * stride) % N);
+                if(t[i] != (real_t) expected_idx) {
+                    test_failed = 1;
+                    break;
+                }
+            }
+
+            if(test_failed) {
+                printf("Test failed!\n");
+                return EXIT_FAILURE;
+            } else {
+                printf("Test passed!\n");
+            }
 #endif
 
-        const double size = N * (sizeof(double) + sizeof(int)) / 1000.0;
-        const double time_per_it = time * 1e6 / ((double) N * rep);
-        const double cy_per_gather = time * freq * _VL_ / ((double) N * rep);
-        const double cy_per_elem = time * freq / ((double) N * rep);
-        printf("%14d,%14.2f,%14.10f,%14.10f,%14.6f,%14.6f\n", N, size, time, time_per_it, cy_per_gather, cy_per_elem);
+            const double size = N * (sizeof(real_t) + sizeof(int)) / 1000.0;
+            const double time_per_it = time * 1e6 / ((double) N * rep);
+            const double bytes_per_call = (double) N * (sizeof(real_t) + sizeof(int));
+            const double gbps = bytes_per_call / (time / rep) / 1e9;
+            const double cy_per_gather = time * freq * _VL_ / ((double) N * rep);
+            const double cy_per_elem = time * freq / ((double) N * rep);
+            printf("%14d,%14d,%14.2f,%14.10f,%14.10f,%14.4f,%14.6f,%14.6f\n", N, active, size, time, time_per_it, gbps, cy_per_gather, cy_per_elem);
+        }
+
         free(a);
         free(idx);
 #ifdef TEST

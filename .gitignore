@@ -52,6 +52,12 @@ Mkfile.old
 dkms.conf
 
 # GPU (CUDA/HIP) build artifacts
-gpu/cuda-gather-bench
-gpu/hip-gather-bench
-gpu/main.hip
+src/cuda/cuda-gather-bench
+src/cuda/hip-gather-bench
+src/cuda/main.hip
+
+# CPU benchmark build artifacts
+gather-bench-*
+GCC/
+CLANG/
+ICC/

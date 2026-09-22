@@ -7,21 +7,22 @@ SCALAR:
 .section .rodata, "a"
 .align 64
 .align 64
-.ymm_reg_mask.1:
+.ymm_reg_mask_soa:
 	.long	0x00000000,0x00000001,0x00000002,0x00000003,0x00000004,0x00000005,0x00000006,0x00000007
-	.type	.ymm_reg_mask.1,@object
-	.size	.ymm_reg_mask.1,32
+	.type	.ymm_reg_mask_soa,@object
+	.size	.ymm_reg_mask_soa,32
 	.align 8
 
-# rdi -> a
+# rdi -> a (double*, SoA planar layout, component d at a[d*n + i])
 # rsi -> neighbors
 # rdx -> numneighs[i]
 # rcx -> &t[t_idx]
 # r8  -> ntest
+# r9  -> n (elements per component, i.e. the stride between components)
 .text
-.globl gather_md_aos
-.type gather_md_aos, @function
-gather_md_aos :
+.globl gather_md_soa
+.type gather_md_soa, @function
+gather_md_soa :
 push rbp
 mov rbp, rsp
 push rbx
@@ -32,37 +33,19 @@ push r13
 push r14
 push r15
 
-vmovdqu ymm7, YMMWORD PTR .ymm_reg_mask.1[rip]
+mov r14, r9                    # save n (r9 is caller-saved, will be reused below)
+lea r12, [rdi + r14 * 8]       # &a[1*n]  (y component base)
+lea r13, [r12 + r14 * 8]       # &a[2*n]  (z component base)
+
+vmovdqu ymm7, YMMWORD PTR .ymm_reg_mask_soa[rip]
 mov r15, rdx
 xor rax, rax
+cmpq r15, 8
+jl .remainder_only
 .align 16
 1:
 
 vmovdqu ymm3, YMMWORD PTR [rsi + rax * 4]
-vpaddd ymm4, ymm3, ymm3
-#ifdef PADDING
-vpaddd ymm3, ymm4, ymm4
-#else
-vpaddd ymm3, ymm3, ymm4
-#endif
-
-# Prefetching instructions
-#mov ebx, DWORD PTR[rsi + rax*4]
-#mov r9d, DWORD PTR[4 + rsi + rax*4]
-#mov r10d, DWORD PTR[8 + rsi + rax*4]
-#mov r11d, DWORD PTR[12 + rsi + rax*4]
-#mov r12d, DWORD PTR[16 + rsi + rax*4]
-#mov r13d, DWORD PTR[20 + rsi + rax*4]
-#mov r14d, DWORD PTR[24 + rsi + rax*4]
-#mov r15d, DWORD PTR[28 + rsi + rax*4]
-#lea ebx, DWORD PTR[rbx]
-#lea r9d, DWORD PTR[r9]
-#lea r10d, DWORD PTR[r10]
-#lea r11d, DWORD PTR[r11]
-#lea r12d, DWORD PTR[r12]
-#lea r13d, DWORD PTR[r13]
-#lea r14d, DWORD PTR[r14]
-#lea r15d, DWORD PTR[r15]
 
 vpcmpeqb k1, xmm5, xmm5
 #ifndef ONLY_FIRST_DIMENSION
@@ -76,10 +59,10 @@ vpxord zmm1, zmm1, zmm1
 vpxord zmm2, zmm2, zmm2
 #endif
 
-vgatherdpd zmm0{k1}, [     rdi + ymm3 * 8]
+vgatherdpd zmm0{k1}, [rdi + ymm3 * 8]
 #ifndef ONLY_FIRST_DIMENSION
-vgatherdpd zmm1{k2}, [8 +  rdi + ymm3 * 8]
-vgatherdpd zmm2{k3}, [16 + rdi + ymm3 * 8]
+vgatherdpd zmm1{k2}, [r12 + ymm3 * 8]
+vgatherdpd zmm2{k3}, [r13 + ymm3 * 8]
 #endif
 
 #ifdef TEST
@@ -90,26 +73,20 @@ lea r10, [rbx + r8  * 8]
 vmovupd  [r10 + rax * 8], zmm2
 #endif
 
-# TODO: see if this logic can be optimized
 addq rax, 8
 subq r15, 8
 cmpq r15, 8
 jge 1b
 
+.remainder_only:
 cmpq r15, 0
 jle .end_func
 
 vpbroadcastd ymm6, r15d
 vpcmpgtd k1, ymm6, ymm7
 vmovdqu32 ymm3{k1}{z}, YMMWORD PTR [rsi + rax * 4]
-vpaddd ymm4, ymm3, ymm3
-#ifdef PADDING
-vpaddd ymm3, ymm4, ymm4
-#else
-vpaddd ymm3, ymm3, ymm4
-#endif
 
-vpxord    zmm0, zmm1, zmm2
+vpxord    zmm0, zmm0, zmm0
 #ifndef ONLY_FIRST_DIMENSION
 kmovw     k2, k1
 kmovw     k3, k1
@@ -117,10 +94,10 @@ vpxord    zmm1, zmm1, zmm1
 vpxord    zmm2, zmm2, zmm2
 #endif
 
-vgatherdpd zmm0{k1}, [     rdi + ymm3 * 8]
+vgatherdpd zmm0{k1}, [rdi + ymm3 * 8]
 #ifndef ONLY_FIRST_DIMENSION
-vgatherdpd zmm1{k2}, [8 +  rdi + ymm3 * 8]
-vgatherdpd zmm2{k3}, [16 + rdi + ymm3 * 8]
+vgatherdpd zmm1{k2}, [r12 + ymm3 * 8]
+vgatherdpd zmm2{k3}, [r13 + ymm3 * 8]
 #endif
 
 #ifdef TEST
@@ -144,4 +121,4 @@ pop rbx
 mov  rsp, rbp
 pop rbp
 ret
-.size gather_md_aos, .-gather_md_aos
+.size gather_md_soa, .-gather_md_soa

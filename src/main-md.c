@@ -59,6 +59,26 @@
 #define ARRAY_ALIGNMENT  64
 #define SIZE  20000
 
+#if defined(DATA_TYPE_SP)
+typedef float real_t;
+#define REAL_STRING "SP"
+#else
+typedef double real_t;
+#define REAL_STRING "DP"
+#endif
+
+#if defined(KERNEL_INTRINSIC) && defined(DATA_TYPE_SP)
+#if defined(ISA_avx512)
+#define _VL_  16
+#define ISA_STRING "avx512"
+#elif defined(ISA_sve)
+#define _VL_  4
+#define ISA_STRING "sve"
+#else
+#define _VL_  8
+#define ISA_STRING "avx2"
+#endif
+#else
 #if defined(ISA_avx512)
 #define _VL_  8
 #define ISA_STRING "avx512"
@@ -69,13 +89,30 @@
 #define _VL_  4
 #define ISA_STRING "avx2"
 #endif
+#endif
 
+#ifdef KERNEL_INTRINSIC
 #ifdef AOS
-#define GATHER gather_aos
+extern void gather_aos_intrinsic(real_t*, int*, int, real_t*, int);
+#define GATHER(a, idx, n, t, cycles, active) gather_aos_intrinsic(a, idx, n, t, active)
 #define LAYOUT_STRING "AoS"
 #else
-#define GATHER gather_soa
+extern void gather_soa_intrinsic(real_t*, int*, int, real_t*, int);
+#define GATHER(a, idx, n, t, cycles, active) gather_soa_intrinsic(a, idx, n, t, active)
 #define LAYOUT_STRING "SoA"
+#endif
+#define KERNEL_STRING "intrinsic"
+#else
+#ifdef AOS
+extern void gather_aos(real_t*, int*, int, real_t*, long int*);
+#define GATHER(a, idx, n, t, cycles, active) gather_aos(a, idx, n, t, cycles)
+#define LAYOUT_STRING "AoS"
+#else
+extern void gather_soa(real_t*, int*, int, real_t*, long int*);
+#define GATHER(a, idx, n, t, cycles, active) gather_soa(a, idx, n, t, cycles)
+#define LAYOUT_STRING "SoA"
+#endif
+#define KERNEL_STRING "asm"
 #endif
 
 #if defined(PADDING) && defined(AOS)
@@ -93,9 +130,6 @@
 #   define MEM_TRACER_END
 #   define MEM_TRACE(addr, op)
 #endif
-
-extern void gather_aos(double*, int*, int, double*, long int*);
-extern void gather_soa(double*, int*, int, double*, long int*);
 
 const char *get_mem_tracer_filename(int stride, int size) {
     static char fname[64];
@@ -115,15 +149,17 @@ int main (int argc, char** argv) {
     int stride = 1;
     int cl_size = 64;
     int opt = 0;
+    int unique = _VL_;
     double freq = 2.5;
     struct option long_opts[] = {
         {"stride", required_argument,   NULL,   's'},
         {"freq",   required_argument,   NULL,   'f'},
         {"line",   required_argument,   NULL,   'l'},
-        {"help",   required_argument,   NULL,   'h'}
+        {"unique", required_argument,   NULL,   'u'},
+        {"help",   no_argument,         NULL,   'h'}
     };
 
-    while((opt = getopt_long(argc, argv, "s:f:l:h", long_opts, NULL)) != -1) {
+    while((opt = getopt_long(argc, argv, "s:f:l:u:h", long_opts, NULL)) != -1) {
         switch(opt) {
             case 's':
                 stride = atoi(optarg);
@@ -137,6 +173,10 @@ int main (int argc, char** argv) {
                 cl_size = atoi(optarg);
                 break;
 
+            case 'u':
+                unique = atoi(optarg);
+                break;
+
             case 'h':
             case '?':
             default:
@@ -146,29 +186,35 @@ int main (int argc, char** argv) {
                 printf("\t-s, --stride=NUMBER   stride between two successive elements (default 1).\n");
                 printf("\t-f, --freq=REAL       CPU frequency in GHz (default 2.5).\n");
                 printf("\t-l, --line=NUMBER     cache line size in bytes (default 64).\n");
+                printf("\t-u, --unique=NUMBER   distinct indices per %d-wide lane group (1..%d, default %d).\n", _VL_, _VL_, _VL_);
                 printf("\t-h, --help            display this help message.\n");
                 printf("\n\n");
                 return EXIT_FAILURE;
         }
     }
 
-    size_t bytesPerWord = sizeof(double);
+    if (unique < 1 || unique > _VL_) {
+        fprintf(stderr, "Error: --unique must be between 1 and %d\n", _VL_);
+        return EXIT_FAILURE;
+    }
+
+    size_t bytesPerWord = sizeof(real_t);
     const int dims = 3;
     const int snbytes = dims + PADDING_BYTES; // bytes per element (struct), includes padding
     #ifdef AOS
-    size_t cacheLinesPerGather = MIN(MAX(stride * _VL_ * snbytes / (cl_size / sizeof(double)), 1), _VL_);
+    size_t cacheLinesPerGather = MIN(MAX(stride * _VL_ * snbytes / (cl_size / sizeof(real_t)), 1), _VL_);
     #else
-    size_t cacheLinesPerGather = MIN(MAX(stride * _VL_ / (cl_size / sizeof(double)), 1), _VL_) * dims;
+    size_t cacheLinesPerGather = MIN(MAX(stride * _VL_ / (cl_size / sizeof(real_t)), 1), _VL_) * dims;
     #endif
     size_t N = SIZE;
     double E, S;
 
-    printf("ISA,Layout,Stride,Dims,Frequency (GHz),Cache Line Size (B),Vector Width (e),Cache Lines/Gather\n");
-    printf("%s,%s,%d,%d,%f,%d,%d,%lu\n\n", ISA_STRING, LAYOUT_STRING, stride, dims, freq, cl_size, _VL_, cacheLinesPerGather);
-    printf("%14s,%14s,%14s,", "N", "Size(kB)", "cut CLs");
+    printf("ISA,Kernel,DataType,Layout,Stride,Dims,Frequency (GHz),Cache Line Size (B),Vector Width (e),Cache Lines/Gather,Unique idx/group\n");
+    printf("%s,%s,%s,%s,%d,%d,%f,%d,%d,%lu,%d\n\n", ISA_STRING, KERNEL_STRING, REAL_STRING, LAYOUT_STRING, stride, dims, freq, cl_size, _VL_, cacheLinesPerGather, unique);
+    printf("%14s,%14s,%14s,%14s,", "N", "Mask", "Size(kB)", "cut CLs");
 
 #ifndef MEASURE_GATHER_CYCLES
-    printf("%14s,%14s,%14s,%14s,%14s", "tot. time", "time/LUP(ms)", "cy/it", "cy/gather", "cy/elem");
+    printf("%14s,%14s,%14s,%14s,%14s,%14s", "tot. time", "time/LUP(ms)", "GB/s", "cy/it", "cy/gather", "cy/elem");
 #else
 
 #ifdef ONLY_FIRST_DIMENSION
@@ -194,15 +240,15 @@ int main (int argc, char** argv) {
         int N_alloc = N * 2;
         int N_cycles_alloc = N_gathers_per_dim * 2;
         int cut_cl = 0;
-        double* a = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * snbytes * sizeof(double) );
+        real_t* a = (real_t*) allocate( ARRAY_ALIGNMENT, N_alloc * snbytes * sizeof(real_t) );
         int* idx = (int*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(int) );
         int rep;
         double time;
 
 #ifdef TEST
-        double* t = (double*) allocate( ARRAY_ALIGNMENT, N_alloc * dims * sizeof(double) );
+        real_t* t = (real_t*) allocate( ARRAY_ALIGNMENT, N_alloc * dims * sizeof(real_t) );
 #else
-        double* t = (double*) NULL;
+        real_t* t = (real_t*) NULL;
 #endif
 
 #ifdef MEASURE_GATHER_CYCLES
@@ -213,15 +259,18 @@ int main (int argc, char** argv) {
 
         for(int i = 0; i < N_alloc; ++i) {
 #ifdef AOS
-            a[i * snbytes + 0] = i * dims + 0;
-            a[i * snbytes + 1] = i * dims + 1;
-            a[i * snbytes + 2] = i * dims + 2;
+            a[i * snbytes + 0] = (real_t) (i * dims + 0);
+            a[i * snbytes + 1] = (real_t) (i * dims + 1);
+            a[i * snbytes + 2] = (real_t) (i * dims + 2);
 #else
-            a[N * 0 + i] = N * 0 + i;
-            a[N * 1 + i] = N * 1 + i;
-            a[N * 2 + i] = N * 2 + i;
+            a[N * 0 + i] = (real_t) (N * 0 + i);
+            a[N * 1 + i] = (real_t) (N * 1 + i);
+            a[N * 2 + i] = (real_t) (N * 2 + i);
 #endif
-            idx[i] = (int)(((long) i * stride) % N);
+            const int group_base = (i / _VL_) * _VL_;
+            const int lane = i % _VL_;
+            const int li = group_base + (lane % unique);
+            idx[i] = (int)(((long) li * stride) % N);
         }
 
 #ifdef ONLY_FIRST_DIMENSION
@@ -251,17 +300,30 @@ int main (int argc, char** argv) {
 #ifdef AOS
         const int cl_shift = log2_uint((unsigned int) cl_size);
         for(int i = 0; i < N; i++) {
-            const int first_cl = (idx[i] * snbytes * sizeof(double)) >> cl_shift;
-            const int last_cl = ((idx[i] * snbytes + gathered_dims - 1) * sizeof(double)) >> cl_shift;
+            const int first_cl = (idx[i] * snbytes * sizeof(real_t)) >> cl_shift;
+            const int last_cl = ((idx[i] * snbytes + gathered_dims - 1) * sizeof(real_t)) >> cl_shift;
             if(first_cl != last_cl) {
                 cut_cl++;
             }
         }
 #endif
 
+        // Warmup, not timed (mirrors the GPU benchmark's explicit warmup call).
+        GATHER(a, idx, N, t, cycles, _VL_);
+
+#ifdef KERNEL_INTRINSIC
+        const int mask_lo = 1, mask_hi = _VL_;
+        const double target_s = (mask_hi > mask_lo) ? (0.5 / _VL_) : 0.5;
+#else
+        const int mask_lo = _VL_, mask_hi = _VL_; // asm kernel has no masking support
+        const double target_s = 0.5;
+#endif
+
+        for (int active = mask_lo; active <= mask_hi; ++active) {
+
         S = getTimeStamp();
         for(int r = 0; r < 100; ++r) {
-            GATHER(a, idx, N, t, cycles);
+            GATHER(a, idx, N, t, cycles, active);
         }
         E = getTimeStamp();
 
@@ -273,11 +335,11 @@ int main (int argc, char** argv) {
         }
 #endif
 
-        rep = 100 * (0.5 / (E - S));
+        rep = 100 * (target_s / (E - S));
         S = getTimeStamp();
         LIKWID_MARKER_START("gather");
         for(int r = 0; r < rep; ++r) {
-            GATHER(a, idx, N, t, cycles);
+            GATHER(a, idx, N, t, cycles, active);
         }
         LIKWID_MARKER_STOP("gather");
         E = getTimeStamp();
@@ -287,11 +349,16 @@ int main (int argc, char** argv) {
 #ifdef TEST
         int test_failed = 0;
         for(int i = 0; i < N; ++i) {
+            if (i % _VL_ >= active) continue; // masked-off lanes are not gathered, skip verification
+            const int group_base = (i / _VL_) * _VL_;
+            const int lane = i % _VL_;
+            const int li = group_base + (lane % unique);
+            const int expected_idx = (int)(((long) li * stride) % N);
             for(int d = 0; d < dims; ++d) {
 #ifdef AOS
-                if(t[d * N + i] != ((i * stride) % N) * dims + d) {
+                if(t[d * N + i] != (real_t) (expected_idx * dims + d)) {
 #else
-                if(t[d * N + i] != d * N + ((i * stride) % N)) {
+                if(t[d * N + i] != (real_t) (d * N + expected_idx)) {
 #endif
                     test_failed = 1;
                     break;
@@ -307,15 +374,17 @@ int main (int argc, char** argv) {
         }
 #endif
 
-        const double size = N * (dims * sizeof(double) + sizeof(int)) / 1000.0;
-        printf("%14d,%14.2f,%14d,", N, size, cut_cl);
+        const double size = N * (dims * sizeof(real_t) + sizeof(int)) / 1000.0;
+        printf("%14d,%14d,%14.2f,%14d,", N, active, size, cut_cl);
 
 #ifndef MEASURE_GATHER_CYCLES
         const double time_per_it = time * 1e6 / ((double) N * rep);
+        const double bytes_per_call = (double) N * (dims * sizeof(real_t) + sizeof(int));
+        const double gbps = bytes_per_call / (time / rep) / 1e9;
         const double cy_per_it = time * freq * _VL_ / ((double) N * rep);
         const double cy_per_gather = time * freq * _VL_ / ((double) N * rep * gathered_dims);
         const double cy_per_elem = time * freq / ((double) N * rep * gathered_dims);
-        printf("%14.10f,%14.10f,%14.6f,%14.6f,%14.6f", time, time_per_it, cy_per_it, cy_per_gather, cy_per_elem);
+        printf("%14.10f,%14.10f,%14.4f,%14.6f,%14.6f,%14.6f", time, time_per_it, gbps, cy_per_it, cy_per_gather, cy_per_elem);
 #else
         double cy_min[dims];
         double cy_max[dims];
@@ -345,6 +414,8 @@ int main (int argc, char** argv) {
 #endif
 
         printf("\n");
+        } // mask sweep
+
         free(a);
         free(idx);
 

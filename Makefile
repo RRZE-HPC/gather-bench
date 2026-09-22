@@ -3,7 +3,11 @@ TARGET	   = gather-bench-$(TAG)
 BUILD_DIR  = ./$(TAG)
 SRC_DIR	= ./src
 MAKE_DIR   = ./
-ISA_DIR	= ./src/$(ISA)
+ifeq ($(strip $(ISA)),sve)
+ISA_DIR	= ./src/sve2
+else
+ISA_DIR	= ./src/x86-64/$(ISA)
+endif
 Q		 ?= @
 
 #DO NOT EDIT BELOW
@@ -50,6 +54,33 @@ endif
 
 ifeq ($(strip $(MEM_TRACER)),true)
     CPPFLAGS += -DMEM_TRACER
+endif
+
+ifeq ($(strip $(DATA_TYPE)),SP)
+    CPPFLAGS += -DDATA_TYPE_SP
+    ifeq ($(strip $(KERNEL)),asm)
+        $(error DATA_TYPE=SP requires KERNEL=intrinsic; the hand-written asm kernels are double-precision only)
+    endif
+endif
+
+ifeq ($(strip $(KERNEL)),intrinsic)
+    CPPFLAGS += -DKERNEL_INTRINSIC -DUNROLL=$(UNROLL)
+    ifeq ($(strip $(PADDING)),true)
+        $(error PADDING is not supported by KERNEL=intrinsic)
+    endif
+    ifeq ($(strip $(ONLY_FIRST_DIMENSION)),true)
+        $(error ONLY_FIRST_DIMENSION is not supported by KERNEL=intrinsic)
+    endif
+    ifeq ($(strip $(MEASURE_GATHER_CYCLES)),true)
+        $(error MEASURE_GATHER_CYCLES is not supported by KERNEL=intrinsic)
+    endif
+    ifeq ($(strip $(MEM_TRACER)),true)
+        $(error MEM_TRACER is not supported by KERNEL=intrinsic)
+    endif
+else
+    ifneq ($(strip $(UNROLL)),4)
+        $(warning UNROLL is only honored by KERNEL=intrinsic; the hand-asm kernels have a fixed, ISA-specific unroll factor)
+    endif
 endif
 
 ${TARGET}: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main.c

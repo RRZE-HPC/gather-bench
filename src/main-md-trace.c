@@ -38,8 +38,8 @@
 #include <allocate.h>
 #include <timing.h>
 
-#if !defined(ISA_avx2) && !defined (ISA_avx512)
-#error "Invalid ISA macro, possible values are: avx2 and avx512"
+#if !defined(ISA_avx2) && !defined (ISA_avx512) && !defined(ISA_sve)
+#error "Invalid ISA macro, possible values are: avx2, avx512 and sve"
 #endif
 
 #if defined(TEST) && defined(ONLY_FIRST_DIMENSION)
@@ -60,20 +60,23 @@
 
 #define ARRAY_ALIGNMENT  64
 
-#ifdef ISA_avx512
+#if defined(ISA_avx512)
 #define _VL_  8
 #define ISA_STRING "avx512"
+#elif defined(ISA_sve)
+#define _VL_  2
+#define ISA_STRING "sve"
 #else
 #define _VL_  4
 #define ISA_STRING "avx2"
 #endif
 
 #ifdef AOS
-#define GATHER gather_md_aos
+#define GATHER(a, neighbors, nn, t, ntest, n) gather_md_aos(a, neighbors, nn, t, ntest)
 #define LOAD(a, i, d, n) load_aos(&a[i * d])
 #define LAYOUT_STRING "AoS"
 #else
-#define GATHER gather_md_soa
+#define GATHER(a, neighbors, nn, t, ntest, n) gather_md_soa(a, neighbors, nn, t, ntest, n)
 #define LOAD(a, i, d, n) load_soa(a, i, n)
 #define LAYOUT_STRING "SoA"
 #endif
@@ -95,7 +98,7 @@
 #endif
 
 int gather_md_aos(double*, int*, int, double*, int);
-int gather_md_soa(double*, int*, int, double*, int);
+int gather_md_soa(double*, int*, int, double*, int, int);
 void load_aos(double*);
 void load_soa(double*, int, int);
 
@@ -274,9 +277,9 @@ int main (int argc, char** argv) {
             a[i * snbytes + 1] = i * dims + 1;
             a[i * snbytes + 2] = i * dims + 2;
             #else
-            a[N * 0 + i] = N * 0 + i;
-            a[N * 1 + i] = N * 1 + i;
-            a[N * 2 + i] = N * 2 + i;
+            a[N_alloc * 0 + i] = N_alloc * 0 + i;
+            a[N_alloc * 1 + i] = N_alloc * 1 + i;
+            a[N_alloc * 2 + i] = N_alloc * 2 + i;
             #endif
             f[i * dims + 0] = 0.0;
             f[i * dims + 1] = 0.0;
@@ -289,8 +292,9 @@ int main (int argc, char** argv) {
         for(int i = 0; i < nlocal; i++) {
             int *neighbors = &neighborlists[i * maxneighs];
             // We inline the assembly for AVX512 with AoS layout to evaluate the impact
-            // of calling external assembly procedures in the overall runtime
-            #ifdef ISA_avx512
+            // of calling external assembly procedures in the overall runtime.
+            // Not used under TEST since this path has no correctness instrumentation.
+            #if defined(ISA_avx512) && defined(AOS) && !defined(TEST)
             __m256i ymm_reg_mask = _mm256_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7);
             __asm__ __volatile__(   "vmovsd 0(%0), %%xmm3;"
                                     "vmovsd 8(%0), %%xmm4;"
@@ -304,6 +308,8 @@ int main (int argc, char** argv) {
 
             __asm__ __volatile__(   "xor %%rax, %%rax;"
                                     "movq %%rdx, %%r15;"
+                                    "cmpq $8, %%r15;"
+                                    "jl 3f;"
                                     "1: vmovdqu (%1,%%rax,4), %%ymm3;"
                                     "vpaddd %%ymm3, %%ymm3, %%ymm4;"
                                     #ifdef PADDING
@@ -317,18 +323,19 @@ int main (int argc, char** argv) {
                                     "vpxord %%zmm0, %%zmm0, %%zmm0;"
                                     "vpxord %%zmm1, %%zmm1, %%zmm1;"
                                     "vpxord %%zmm2, %%zmm2, %%zmm2;"
-                                    "vgatherdpd (%3, %%ymm3, 8), %%zmm0{{%%k1}};"
-                                    "vgatherdpd 8(%3, %%ymm3, 8), %%zmm1{{%%k2}};"
-                                    "vgatherdpd 16(%3, %%ymm3, 8), %%zmm2{{%%k3}};"
+                                    "vgatherdpd (%3, %%ymm3, 8), %%zmm0%{%%k1%};"
+                                    "vgatherdpd 8(%3, %%ymm3, 8), %%zmm1%{%%k2%};"
+                                    "vgatherdpd 16(%3, %%ymm3, 8), %%zmm2%{%%k3%};"
                                     "addq $8, %%rax;"
                                     "subq $8, %%r15;"
                                     "cmpq $8, %%r15;"
                                     "jge 1b;"
+                                    "3:;"
                                     "cmpq $0, %%r15;"
-                                    "jle 2;"
+                                    "jle 2f;"
                                     "vpbroadcastd %%r15d, %%ymm5;"
-                                    "vpcmpgtd %%ymm5, %2, %%k1;"
-                                    "vmovdqu32 (%1,%%rax,4), %%ymm3{{%%k1}}{{z}};"
+                                    "vpcmpgtd %2, %%ymm5, %%k1;"
+                                    "vmovdqu32 (%1,%%rax,4), %%ymm3%{%%k1%}%{z%};"
                                     "vpaddd %%ymm3, %%ymm3, %%ymm4;"
                                     #ifdef PADDING
                                     "vpaddd %%ymm4, %%ymm4, %%ymm3;"
@@ -340,17 +347,17 @@ int main (int argc, char** argv) {
                                     "kmovw %%k1, %%k3;"
                                     "vpxord %%zmm1, %%zmm1, %%zmm1;"
                                     "vpxord %%zmm2, %%zmm2, %%zmm2;"
-                                    "vgatherdpd (%3, %%ymm3, 8), %%zmm0{{%%k1}};"
-                                    "vgatherdpd 8(%3, %%ymm3, 8), %%zmm1{{%%k2}};"
-                                    "vgatherdpd 16(%3, %%ymm3, 8), %%zmm2{{%%k3}};"
+                                    "vgatherdpd (%3, %%ymm3, 8), %%zmm0%{%%k1%};"
+                                    "vgatherdpd 8(%3, %%ymm3, 8), %%zmm1%{%%k2%};"
+                                    "vgatherdpd 16(%3, %%ymm3, 8), %%zmm2%{%%k3%};"
                                     "addq %%r15, %%rax;"
                                     "2:;"
                                     :
                                     : "d" (numneighs[i]), "r" (neighbors), "x" (ymm_reg_mask), "r" (a)
-                                    : "%rax", "%r15", "%ymm3", "%ymm4", "%ymm5", "%k1", "%k2", "%k3", "%zmm0", "%zmm1", "%zmm2" );
+                                    : "%rax", "%r15", "%ymm3", "%ymm4", "%ymm5", "%k1", "%k2", "%k3", "%zmm0", "%zmm1", "%zmm2", "cc" );
             #else
             LOAD(a, i, snbytes, N_alloc);
-            t_idx += GATHER(a, neighbors, numneighs[i], &t[t_idx], ntest);
+            t_idx += GATHER(a, neighbors, numneighs[i], &t[t_idx], ntest, N_alloc);
             #endif
             f[i * dims + 0] += i;
             f[i * dims + 1] += i;
@@ -400,7 +407,7 @@ int main (int argc, char** argv) {
                     #ifdef AOS
                     if(t[d * ntest + t_idx] != k * dims + d) {
                     #else
-                    if(t[d * ntest + t_idx] != d * N + k) {
+                    if(t[d * ntest + t_idx] != d * N_alloc + k) {
                     #endif
                         test_failed = 1;
                         break;
