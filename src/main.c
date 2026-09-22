@@ -62,9 +62,8 @@ typedef double real_t;
 #define REAL_STRING "DP"
 #endif
 
-// The hand-written asm kernels are DP-only and fix their own unroll factor;
-// the intrinsic kernel's vector length also depends on DATA_TYPE.
-#if defined(KERNEL_INTRINSIC) && defined(DATA_TYPE_SP)
+// Vector length depends on both ISA and DATA_TYPE for both kernel backends.
+#if defined(DATA_TYPE_SP)
 #if defined(ISA_avx512)
 #define _VL_  16
 #define ISA_STRING "avx512"
@@ -93,12 +92,12 @@ extern void gather_intrinsic(real_t*, int*, int, real_t*, int);
 #define GATHER(a, idx, n, t, active) gather_intrinsic(a, idx, n, t, active)
 #define KERNEL_STRING "intrinsic"
 #else
-#ifdef TEST
-extern void gather(real_t*, int*, int, real_t*);
-#define GATHER(a, idx, n, t, active) gather(a, idx, n, t)
+#ifdef DATA_TYPE_SP
+extern void gather_sp(real_t*, int*, int, real_t*, int);
+#define GATHER(a, idx, n, t, active) gather_sp(a, idx, n, t, active)
 #else
-extern void gather(real_t*, int*, int);
-#define GATHER(a, idx, n, t, active) gather(a, idx, n)
+extern void gather_dp(real_t*, int*, int, real_t*, int);
+#define GATHER(a, idx, n, t, active) gather_dp(a, idx, n, t, active)
 #endif
 #define KERNEL_STRING "asm"
 #endif
@@ -163,11 +162,7 @@ int main (int argc, char** argv) {
     printf("%14s,%14s,%14s,%14s,%14s,%14s,%14s,%14s\n", "N", "Mask", "Size(kB)", "tot. time", "time/LUP(ms)", "GB/s", "cy/gather", "cy/elem");
 
     freq = freq * 1e9;
-#ifdef KERNEL_INTRINSIC
     const int mask_lo = 1, mask_hi = _VL_;
-#else
-    const int mask_lo = _VL_, mask_hi = _VL_; // asm kernel has no masking support: single, fully-active row
-#endif
 
     for(int N = 1024; N < 400000; N = 1.5 * N) {
         int N_alloc = N * 2;

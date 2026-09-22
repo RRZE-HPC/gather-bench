@@ -59,6 +59,10 @@
 #define ARRAY_ALIGNMENT  64
 #define SIZE  20000
 
+#ifndef UNROLL
+#define UNROLL 4
+#endif
+
 #if defined(DATA_TYPE_SP)
 typedef float real_t;
 #define REAL_STRING "SP"
@@ -67,7 +71,7 @@ typedef double real_t;
 #define REAL_STRING "DP"
 #endif
 
-#if defined(KERNEL_INTRINSIC) && defined(DATA_TYPE_SP)
+#if defined(DATA_TYPE_SP)
 #if defined(ISA_avx512)
 #define _VL_  16
 #define ISA_STRING "avx512"
@@ -104,12 +108,22 @@ extern void gather_soa_intrinsic(real_t*, int*, int, real_t*, int);
 #define KERNEL_STRING "intrinsic"
 #else
 #ifdef AOS
-extern void gather_aos(real_t*, int*, int, real_t*, long int*);
-#define GATHER(a, idx, n, t, cycles, active) gather_aos(a, idx, n, t, cycles)
+#ifdef DATA_TYPE_SP
+extern void gather_aos_sp(real_t*, int*, int, real_t*, long int*, int);
+#define GATHER(a, idx, n, t, cycles, active) gather_aos_sp(a, idx, n, t, cycles, active)
+#else
+extern void gather_aos_dp(real_t*, int*, int, real_t*, long int*, int);
+#define GATHER(a, idx, n, t, cycles, active) gather_aos_dp(a, idx, n, t, cycles, active)
+#endif
 #define LAYOUT_STRING "AoS"
 #else
-extern void gather_soa(real_t*, int*, int, real_t*, long int*);
-#define GATHER(a, idx, n, t, cycles, active) gather_soa(a, idx, n, t, cycles)
+#ifdef DATA_TYPE_SP
+extern void gather_soa_sp(real_t*, int*, int, real_t*, long int*, int);
+#define GATHER(a, idx, n, t, cycles, active) gather_soa_sp(a, idx, n, t, cycles, active)
+#else
+extern void gather_soa_dp(real_t*, int*, int, real_t*, long int*, int);
+#define GATHER(a, idx, n, t, cycles, active) gather_soa_dp(a, idx, n, t, cycles, active)
+#endif
 #define LAYOUT_STRING "SoA"
 #endif
 #define KERNEL_STRING "asm"
@@ -229,9 +243,13 @@ int main (int argc, char** argv) {
     freq = freq * 1e9;
 
     for(int N = 512; N < 80000000; N = 1.5 * N) {
-        // Currently this only works when the array size (in elements) is multiple of the vector length (no preamble and prelude)
-        if(N % _VL_ != 0) {
-            N += _VL_ - (N % _VL_);
+        // Kernels process VL*UNROLL elements per outer-loop step with no
+        // remainder handling; N must be an exact multiple so the last step
+        // doesn't overrun into the next component's region of `t` (the AoS/SoA
+        // components are packed exactly N elements apart).
+        const int step = _VL_ * UNROLL;
+        if(N % step != 0) {
+            N += step - (N % step);
         }
 
         MEM_TRACER_INIT(stride, N);
@@ -311,13 +329,8 @@ int main (int argc, char** argv) {
         // Warmup, not timed (mirrors the GPU benchmark's explicit warmup call).
         GATHER(a, idx, N, t, cycles, _VL_);
 
-#ifdef KERNEL_INTRINSIC
         const int mask_lo = 1, mask_hi = _VL_;
         const double target_s = (mask_hi > mask_lo) ? (0.5 / _VL_) : 0.5;
-#else
-        const int mask_lo = _VL_, mask_hi = _VL_; // asm kernel has no masking support
-        const double target_s = 0.5;
-#endif
 
         for (int active = mask_lo; active <= mask_hi; ++active) {
 

@@ -29,29 +29,41 @@ make TAG=GCC ISA=avx2 VARIANT=md
 Key `config.mk` / command-line knobs:
 
 - `ISA` - `avx2`, `avx512`, or `sve`.
-- `KERNEL` - `asm` (default: hand-written per-ISA assembly, double-precision
-  only, fixed unroll factor, no masking) or `intrinsic` (portable C++
-  kernel that additionally supports `DATA_TYPE=SP`, `UNROLL`, and masked
-  gathers).
-- `DATA_TYPE` - `DP` (default) or `SP`; `SP` requires `KERNEL=intrinsic`.
-- `UNROLL` - unroll factor for `KERNEL=intrinsic` (1, 2, 4, or 8).
+- `KERNEL` - `asm` (hand-written per-ISA assembly, default) or `intrinsic`
+  (portable C++ kernel). Both support `DATA_TYPE=SP`, `UNROLL`, and masked
+  gathers for `main.c`/`main-md.c` (the plain and AoS/SoA kernels); the
+  md-trace kernels remain `KERNEL=asm`-only, double-precision, and
+  fixed-unroll. This lets the two implementations be compared directly.
+- `DATA_TYPE` - `DP` (default) or `SP`.
+- `UNROLL` - unroll factor (1, 2, 4, or 8) for `main.c`/`main-md.c` with
+  either kernel; ignored (fixed) by the md-trace variant. Implemented via
+  the GNU assembler's `.rept` for `KERNEL=asm`.
 - `DATA_LAYOUT` - `AOS` or `SOA` (main-md/main-md-trace only).
 - `TEST=true` - verify gathered values against the expected pattern.
 - `--unique=K` (`main.c`/`main-md.c` runtime flag) - number of distinct
   indices per vector-width lane group (1..VL, default VL = fully distinct).
   Setting `K` < VL makes some gathered elements in the same instruction
   reference the same address, letting you evaluate the effect of address
-  conflicts within a gather.
+  conflicts within a gather. Works identically with either `KERNEL`, since
+  it's a data-generation concern, not a kernel concern.
 
-When `KERNEL=intrinsic`, both `main.c` and `main-md.c` automatically sweep
-every mask value from 1 to VL active lanes per gather (an extra `Mask`
-column in the CSV output), using each ISA's native masked-gather support
-(AVX-512 k-registers, AVX2's vector gather mask, SVE predicates) built once
-outside the timed loop. `KERNEL=asm` has no masking support and reports a
-single, fully-active row.
+Both `main.c` and `main-md.c` automatically sweep every mask value from 1 to
+VL active lanes per gather (an extra `Mask` column in the CSV output), using
+each ISA's native masked-gather support (AVX-512 k-registers rebuilt via
+`kmovw`, AVX2's vector gather mask rebuilt via a lane-index compare, SVE
+predicates via `whilelt`) built once (or, for AVX-512/AVX2 where the
+gather instruction consumes its mask, cheaply rebuilt) outside the hot loop.
 
-`PADDING`, `ONLY_FIRST_DIMENSION`, `MEASURE_GATHER_CYCLES`, and
-`MEM_TRACER` are `KERNEL=asm`-only diagnostic/variant options.
+`PADDING`, `ONLY_FIRST_DIMENSION`, and `MEM_TRACER` are `KERNEL=asm`-only
+diagnostic/variant options for `main-md.c`. `MEASURE_GATHER_CYCLES` is also
+`KERNEL=asm`-only and, on AVX-512, always uses the full (unmasked) width
+regardless of the mask sweep - it's an orthogonal per-gather cycle-counting
+diagnostic, not re-verified against masking.
+
+SVE2's `UNROLL` is always effectively 1: SVE already scales to the
+hardware's native vector width per iteration, so additional software
+unrolling was judged not worth the added unverifiable risk in this
+environment (see below).
 
 ## GPU (CUDA/HIP) variant
 

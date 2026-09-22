@@ -1,16 +1,22 @@
 .arch armv8-a+sve2
 .text
-.global gather_aos
-.type gather_aos, %function
+.global gather_aos_dp
+.type gather_aos_dp, %function
 
+// UNVERIFIED: no SVE hardware or cross-compiler was available to build/run this.
+// UNROLL is not honored here; see gather_dp.S for why.
+//
 // x0 -> a (double*), AoS layout, dims doubles per element (+1 if PADDING)
 // x1 -> idx (int*)
 // w2 -> N
 // x3 -> t (double*, only used if TEST; planar t[d*N+i] layout)
 // x4 -> cycles (unused, no per-gather cycle counting on this ISA)
-gather_aos:
+// w5 -> active_lanes: first `active_lanes` (of the hardware's native vector
+//       width) elements of every gather are gathered
+gather_aos_dp:
     mov     w2, w2              // zero-extend N into x2
-    ptrue   p0.d, all
+    mov     w5, w5              // zero-extend active_lanes into x5
+    whilelt p0.d, xzr, x5       // p0 = first active_lanes lanes active
     mov     x9, #0
 .align 4
 1:
@@ -47,4 +53,4 @@ gather_aos:
     cmp     x9, x2
     b.lt    1b
     ret
-.size gather_aos, .-gather_aos
+.size gather_aos_dp, .-gather_aos_dp

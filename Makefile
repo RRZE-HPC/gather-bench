@@ -59,12 +59,23 @@ endif
 ifeq ($(strip $(DATA_TYPE)),SP)
     CPPFLAGS += -DDATA_TYPE_SP
     ifeq ($(strip $(KERNEL)),asm)
-        $(error DATA_TYPE=SP requires KERNEL=intrinsic; the hand-written asm kernels are double-precision only)
+        ifeq ($(strip $(VARIANT)),md-trace)
+            $(error DATA_TYPE=SP is not supported for the md-trace variant; its kernels remain double-precision only)
+        endif
+    endif
+endif
+
+# UNROLL is honored by both kernels for main.c/main-md.c (gather/gather_aos/gather_soa);
+# the md-trace kernels (gather_md_aos/gather_md_soa) still have a fixed unroll factor.
+CPPFLAGS += -DUNROLL=$(UNROLL)
+ifeq ($(strip $(VARIANT)),md-trace)
+    ifneq ($(strip $(UNROLL)),4)
+        $(warning UNROLL is not honored by the md-trace variant; its kernels have a fixed unroll factor)
     endif
 endif
 
 ifeq ($(strip $(KERNEL)),intrinsic)
-    CPPFLAGS += -DKERNEL_INTRINSIC -DUNROLL=$(UNROLL)
+    CPPFLAGS += -DKERNEL_INTRINSIC
     ifeq ($(strip $(PADDING)),true)
         $(error PADDING is not supported by KERNEL=intrinsic)
     endif
@@ -76,10 +87,6 @@ ifeq ($(strip $(KERNEL)),intrinsic)
     endif
     ifeq ($(strip $(MEM_TRACER)),true)
         $(error MEM_TRACER is not supported by KERNEL=intrinsic)
-    endif
-else
-    ifneq ($(strip $(UNROLL)),4)
-        $(warning UNROLL is only honored by KERNEL=intrinsic; the hand-asm kernels have a fixed, ISA-specific unroll factor)
     endif
 endif
 
