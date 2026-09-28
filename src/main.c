@@ -35,6 +35,7 @@
 //---
 #include <timing.h>
 #include <allocate.h>
+#include <cycles.h>
 
 #if !defined(ISA_avx2) && !defined (ISA_avx512) && !defined(ISA_sve)
 #error "Invalid ISA macro, possible values are: avx2, avx512 and sve"
@@ -159,12 +160,22 @@ int main (int argc, char** argv) {
 
     printf("ISA,Kernel,DataType,Stride (elems),Frequency (GHz),Cache Line Size (B),Vector Width (elems),Cache Lines/Gather,Unique idx/group\n");
     printf("%s,%s,%s,%d,%f,%d,%d,%lu,%d\n\n", ISA_STRING, KERNEL_STRING, REAL_STRING, stride, freq, cl_size, _VL_, cacheLinesPerGather, unique);
-    printf("%14s,%14s,%14s,%14s,%14s,%14s,%14s,%14s\n", "N", "Mask", "Size(kB)", "tot. time", "time/LUP(ms)", "GB/s", "cy/gather", "cy/elem");
+    printf("%14s,%14s,%14s,%14s,%14s,%14s,%14s,%14s,%14s,%14s\n", "N", "Mask", "Size(kB)", "tot. time", "time/LUP(ms)", "GB/s", "cy/gather", "cy/elem", "GHz(meas)", "cy/it(meas)");
+
+    const int have_cycles = cycles_init();
+    if (!have_cycles) {
+        fprintf(stderr, "Warning: perf_event_open failed, GHz(meas) and cy/it(meas) will be nan\n");
+    }
 
     freq = freq * 1e9;
     const int mask_lo = 1, mask_hi = _VL_;
 
     for(int N = 1024; N < 400000; N = 1.5 * N) {
+        // Kernels step VL*UNROLL elements with no remainder handling.
+        const int step = _VL_ * UNROLL;
+        if(N % step != 0) {
+            N += step - (N % step);
+        }
         int N_alloc = N * 2;
         real_t* a = (real_t*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(real_t) );
         int* idx = (int*) allocate( ARRAY_ALIGNMENT, N_alloc * sizeof(int) );
@@ -203,9 +214,11 @@ int main (int argc, char** argv) {
             rep = 100 * (target_s / (E - S));
             S = getTimeStamp();
             LIKWID_MARKER_START("gather");
+            cycles_start();
             for(int r = 0; r < rep; ++r) {
                 GATHER(a, idx, N, t, active);
             }
+            const long long cycles = cycles_stop();
             LIKWID_MARKER_STOP("gather");
             E = getTimeStamp();
 
@@ -239,7 +252,9 @@ int main (int argc, char** argv) {
             const double gbps = bytes_per_call / (time / rep) / 1e9;
             const double cy_per_gather = time * freq * _VL_ / ((double) N * rep);
             const double cy_per_elem = time * freq / ((double) N * rep);
-            printf("%14d,%14d,%14.2f,%14.10f,%14.10f,%14.4f,%14.6f,%14.6f\n", N, active, size, time, time_per_it, gbps, cy_per_gather, cy_per_elem);
+            const double ghz_meas = (cycles >= 0) ? cycles / time / 1e9 : 0.0 / 0.0;
+            const double cy_per_it_meas = (cycles >= 0) ? (double) cycles * _VL_ / ((double) N * rep) : 0.0 / 0.0;
+            printf("%14d,%14d,%14.2f,%14.10f,%14.10f,%14.4f,%14.6f,%14.6f,%14.4f,%14.6f\n", N, active, size, time, time_per_it, gbps, cy_per_gather, cy_per_elem, ghz_meas, cy_per_it_meas);
         }
 
         free(a);

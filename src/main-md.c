@@ -34,6 +34,7 @@
 #include <likwid-marker.h>
 //---
 #include <allocate.h>
+#include <cycles.h>
 #include <timing.h>
 
 #if !defined(ISA_avx2) && !defined (ISA_avx512) && !defined(ISA_sve)
@@ -228,7 +229,7 @@ int main (int argc, char** argv) {
     printf("%14s,%14s,%14s,%14s,", "N", "Mask", "Size(kB)", "cut CLs");
 
 #ifndef MEASURE_GATHER_CYCLES
-    printf("%14s,%14s,%14s,%14s,%14s,%14s", "tot. time", "time/LUP(ms)", "GB/s", "cy/it", "cy/gather", "cy/elem");
+    printf("%14s,%14s,%14s,%14s,%14s,%14s,%14s,%14s,%14s", "tot. time", "time/LUP(ms)", "GB/s", "cy/it", "cy/gather", "cy/elem", "GHz(meas)", "cy/it(meas)", "cy/gath(meas)");
 #else
 
 #ifdef ONLY_FIRST_DIMENSION
@@ -241,6 +242,11 @@ int main (int argc, char** argv) {
 
     printf("\n");
     freq = freq * 1e9;
+
+    const int have_cycles = cycles_init();
+    if (!have_cycles) {
+        fprintf(stderr, "Warning: perf_event_open failed, measured-cycle columns will be nan\n");
+    }
 
     for(int N = 512; N < 80000000; N = 1.5 * N) {
         // Kernels process VL*UNROLL elements per outer-loop step with no
@@ -351,9 +357,11 @@ int main (int argc, char** argv) {
         rep = 100 * (target_s / (E - S));
         S = getTimeStamp();
         LIKWID_MARKER_START("gather");
+        cycles_start();
         for(int r = 0; r < rep; ++r) {
             GATHER(a, idx, N, t, cycles, active);
         }
+        const long long core_cycles = cycles_stop();
         LIKWID_MARKER_STOP("gather");
         E = getTimeStamp();
 
@@ -397,7 +405,10 @@ int main (int argc, char** argv) {
         const double cy_per_it = time * freq * _VL_ / ((double) N * rep);
         const double cy_per_gather = time * freq * _VL_ / ((double) N * rep * gathered_dims);
         const double cy_per_elem = time * freq / ((double) N * rep * gathered_dims);
-        printf("%14.10f,%14.10f,%14.4f,%14.6f,%14.6f,%14.6f", time, time_per_it, gbps, cy_per_it, cy_per_gather, cy_per_elem);
+        const double ghz_meas = (core_cycles >= 0) ? core_cycles / time / 1e9 : 0.0 / 0.0;
+        const double cy_per_it_meas = (core_cycles >= 0) ? (double) core_cycles * _VL_ / ((double) N * rep) : 0.0 / 0.0;
+        const double cy_per_gather_meas = cy_per_it_meas / gathered_dims;
+        printf("%14.10f,%14.10f,%14.4f,%14.6f,%14.6f,%14.6f,%14.4f,%14.6f,%14.6f", time, time_per_it, gbps, cy_per_it, cy_per_gather, cy_per_elem, ghz_meas, cy_per_it_meas, cy_per_gather_meas);
 #else
         double cy_min[dims];
         double cy_max[dims];
