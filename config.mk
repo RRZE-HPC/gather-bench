@@ -8,6 +8,8 @@ ENABLE_LIKWID ?= false
 # asm: hand-written per-ISA assembly kernels (DP only, fixed unroll, no masking).
 # intrinsic: C++ intrinsics kernel, supports DATA_TYPE=SP, UNROLL, and the mask sweep.
 KERNEL ?= asm
+# gather (default), scatter, or rmw (gather + add + scatter); scatter/rmw need KERNEL=intrinsic and avx512/sve.
+OP ?= gather
 # Unroll factor for the intrinsic kernel (1, 2, 4 or 8). Ignored by KERNEL=asm.
 UNROLL ?= 4
 

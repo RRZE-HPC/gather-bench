@@ -13,6 +13,10 @@
  *     native masked-gather support (AVX-512 k-registers, AVX2's vector gather
  *     mask, SVE predicates), built once outside the hot loop.
  *
+ * OP=scatter / OP=rmw (-DOP_SCATTER / -DOP_RMW, AVX-512 and SVE only) replace
+ * each gather by a scatter of a constant vector, or by gather + add + scatter
+ * to the same indices (the read-modify-write of a neighbor force update).
+ *
  * Duplicate-index generation (--unique) is a data-generation concern, not a
  * kernel concern, so it needs no support here - it works with this kernel
  * unchanged, same as with the asm kernels.
@@ -68,6 +72,10 @@ template <> struct vec_traits<double> {
     static acc_t add_acc(acc_t a, __m512d v) { return _mm512_add_pd(a, v); }
     static double hsum(acc_t a) { return _mm512_reduce_add_pd(a); }
     static void store(double* t, __m512d v) { _mm512_storeu_pd(t, v); }
+    static void scatter(double* base, vidx_t vidx, mask_t mask, __m512d v) {
+        _mm512_mask_i32scatter_pd(base, mask, vidx, v, 8);
+    }
+    static __m512d one() { return _mm512_set1_pd(1.0); }
 };
 template <> struct vec_traits<float> {
     static constexpr int VL = 16;
@@ -86,8 +94,15 @@ template <> struct vec_traits<float> {
     static acc_t add_acc(acc_t a, __m512 v) { return _mm512_add_ps(a, v); }
     static float hsum(acc_t a) { return _mm512_reduce_add_ps(a); }
     static void store(float* t, __m512 v) { _mm512_storeu_ps(t, v); }
+    static void scatter(float* base, vidx_t vidx, mask_t mask, __m512 v) {
+        _mm512_mask_i32scatter_ps(base, mask, vidx, v, 4);
+    }
+    static __m512 one() { return _mm512_set1_ps(1.0f); }
 };
 #else // ISA_avx2
+#if defined(OP_SCATTER) || defined(OP_RMW)
+#error "OP=scatter and OP=rmw need AVX-512 or SVE (AVX2 has no scatter instruction)"
+#endif
 template <> struct vec_traits<double> {
     static constexpr int VL = 4;
     using vidx_t = __m128i;
@@ -164,10 +179,17 @@ static void gather_core(const T* a, const int* idx, int N, T* t, int active_lane
             for (int d = 0; d < DIMS; ++d) {
                 const T* base = IS_AOS ? (a + d) : (a + (size_t)d * N);
                 const typename VT::vidx_t vidx = IS_AOS ? VT::mul_dims(vidx_raw, DIMS) : vidx_raw;
+#if defined(OP_SCATTER)
+                VT::scatter(const_cast<T*>(base), vidx, mask, VT::one());
+#elif defined(OP_RMW)
+                const auto v = VT::add_acc(VT::gather(base, vidx, mask), VT::one());
+                VT::scatter(const_cast<T*>(base), vidx, mask, v);
+#else
                 const auto v = VT::gather(base, vidx, mask);
                 acc = VT::add_acc(acc, v);
 #ifdef TEST
                 if (base_i < N) VT::store(&t[(size_t)d * N + base_i], v);
+#endif
 #endif
             }
         }
@@ -196,6 +218,9 @@ template <> struct vec_traits<double> {
         return svld1_gather_index_f64(p, base, vidx);
     }
     static double hsum(svbool_t p, svfloat64_t acc) { return svaddv_f64(p, acc); }
+    static void scatter(svbool_t p, double* base, svint64_t vidx, svfloat64_t v) {
+        svst1_scatter_index_f64(p, base, vidx, v);
+    }
 };
 template <> struct vec_traits<float> {
     static svbool_t make_mask(int active) { return svwhilelt_b32(0, active); }
@@ -207,6 +232,9 @@ template <> struct vec_traits<float> {
         return svld1_gather_index_f32(p, base, vidx);
     }
     static float hsum(svbool_t p, svfloat32_t acc) { return svaddv_f32(p, acc); }
+    static void scatter(svbool_t p, float* base, svint32_t vidx, svfloat32_t v) {
+        svst1_scatter_index_f32(p, base, vidx, v);
+    }
 };
 
 template <typename T, int DIMS, bool IS_AOS>
@@ -221,10 +249,17 @@ static void gather_core(const T* a, const int* idx, int N, T* t, int active_lane
         for (int d = 0; d < DIMS; ++d) {
             const T* base = IS_AOS ? (a + d) : (a + (size_t)d * N);
             const auto vidx = IS_AOS ? VT::mul_dims(all, vidx_raw, DIMS) : vidx_raw;
+#if defined(OP_SCATTER)
+            VT::scatter(mask, const_cast<T*>(base), vidx, svdup_n<T>(T(1)));
+#elif defined(OP_RMW)
+            const auto v = svadd_x(all, VT::gather(mask, base, vidx), svdup_n<T>(T(1)));
+            VT::scatter(mask, const_cast<T*>(base), vidx, v);
+#else
             const auto v = VT::gather(mask, base, vidx);
             acc = svadd_x(all, acc, v);
 #ifdef TEST
             svst1(all, &t[(size_t)d * N + i], v);
+#endif
 #endif
         }
     }

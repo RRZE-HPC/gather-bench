@@ -1,6 +1,7 @@
 #CONFIGURE BUILD SYSTEM
-TARGET	   = gather-bench-$(TAG)
-BUILD_DIR  = ./$(TAG)
+OP_SUFFIX  = $(if $(filter-out gather,$(strip $(OP))),-$(strip $(OP)))
+TARGET	   = gather-bench-$(TAG)$(OP_SUFFIX)
+BUILD_DIR  = ./$(TAG)$(OP_SUFFIX)
 SRC_DIR	= ./src
 MAKE_DIR   = ./
 ifeq ($(strip $(ISA)),sve)
@@ -71,6 +72,19 @@ CPPFLAGS += -DUNROLL=$(UNROLL)
 ifeq ($(strip $(VARIANT)),md-trace)
     ifneq ($(strip $(UNROLL)),4)
         $(warning UNROLL is not honored by the md-trace variant; its kernels have a fixed unroll factor)
+    endif
+endif
+
+ifeq ($(strip $(OP)),scatter)
+    CPPFLAGS += -DOP_SCATTER
+else ifeq ($(strip $(OP)),rmw)
+    CPPFLAGS += -DOP_RMW
+else ifneq ($(strip $(OP)),gather)
+    $(error Invalid OP: $(OP). Must be one of: gather, scatter, rmw)
+endif
+ifneq ($(strip $(OP)),gather)
+    ifneq ($(strip $(KERNEL)),intrinsic)
+        $(error OP=$(OP) requires KERNEL=intrinsic)
     endif
 endif
 

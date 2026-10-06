@@ -91,7 +91,13 @@ typedef double real_t;
 #ifdef KERNEL_INTRINSIC
 extern void gather_intrinsic(real_t*, int*, int, real_t*, int);
 #define GATHER(a, idx, n, t, active) gather_intrinsic(a, idx, n, t, active)
+#if defined(OP_SCATTER)
+#define KERNEL_STRING "intrinsic-scatter"
+#elif defined(OP_RMW)
+#define KERNEL_STRING "intrinsic-rmw"
+#else
 #define KERNEL_STRING "intrinsic"
+#endif
 #else
 #ifdef DATA_TYPE_SP
 extern void gather_sp(real_t*, int*, int, real_t*, int);
