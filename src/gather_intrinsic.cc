@@ -212,28 +212,30 @@ template <> struct vec_traits<double> {
     static svbool_t make_mask(int active) { return svwhilelt_b64(0, active); }
     static svint64_t load_idx(svbool_t p, const int* q) { return svld1sw_s64(p, q); }
     static svint64_t mul_dims(svbool_t p, svint64_t v, int dims) {
-        return (dims == 1) ? v : svmad_n_s64_x(p, v, 2, v);
+        return (dims == 1) ? v : svmul_n_s64_x(p, v, 3);
     }
     static svfloat64_t gather(svbool_t p, const double* base, svint64_t vidx) {
-        return svld1_gather_index_f64(p, base, vidx);
+        return svld1_gather_s64index_f64(p, base, vidx);
     }
     static double hsum(svbool_t p, svfloat64_t acc) { return svaddv_f64(p, acc); }
+    static svfloat64_t dup(double x) { return svdup_n_f64(x); }
     static void scatter(svbool_t p, double* base, svint64_t vidx, svfloat64_t v) {
-        svst1_scatter_index_f64(p, base, vidx, v);
+        svst1_scatter_s64index_f64(p, base, vidx, v);
     }
 };
 template <> struct vec_traits<float> {
     static svbool_t make_mask(int active) { return svwhilelt_b32(0, active); }
     static svint32_t load_idx(svbool_t p, const int* q) { return svld1_s32(p, q); }
     static svint32_t mul_dims(svbool_t p, svint32_t v, int dims) {
-        return (dims == 1) ? v : svmad_n_s32_x(p, v, 2, v);
+        return (dims == 1) ? v : svmul_n_s32_x(p, v, 3);
     }
     static svfloat32_t gather(svbool_t p, const float* base, svint32_t vidx) {
-        return svld1_gather_index_f32(p, base, vidx);
+        return svld1_gather_s32index_f32(p, base, vidx);
     }
     static float hsum(svbool_t p, svfloat32_t acc) { return svaddv_f32(p, acc); }
+    static svfloat32_t dup(float x) { return svdup_n_f32(x); }
     static void scatter(svbool_t p, float* base, svint32_t vidx, svfloat32_t v) {
-        svst1_scatter_index_f32(p, base, vidx, v);
+        svst1_scatter_s32index_f32(p, base, vidx, v);
     }
 };
 
@@ -241,7 +243,7 @@ template <typename T, int DIMS, bool IS_AOS>
 static void gather_core(const T* a, const int* idx, int N, T* t, int active_lanes) {
     using VT = vec_traits<T>;
     const svbool_t mask = VT::make_mask(active_lanes);
-    auto acc = svdup_n<T>(T(0)); // NOTE: relies on ACLE overload resolution by T
+    auto acc = VT::dup(T(0));
 
     for (int i = 0; i < N; i += (int)svcntw()) {
         const svbool_t all = svwhilelt_b32(0, N - i); // conservative full-VL iteration predicate
@@ -250,9 +252,9 @@ static void gather_core(const T* a, const int* idx, int N, T* t, int active_lane
             const T* base = IS_AOS ? (a + d) : (a + (size_t)d * N);
             const auto vidx = IS_AOS ? VT::mul_dims(all, vidx_raw, DIMS) : vidx_raw;
 #if defined(OP_SCATTER)
-            VT::scatter(mask, const_cast<T*>(base), vidx, svdup_n<T>(T(1)));
+            VT::scatter(mask, const_cast<T*>(base), vidx, VT::dup(T(1)));
 #elif defined(OP_RMW)
-            const auto v = svadd_x(all, VT::gather(mask, base, vidx), svdup_n<T>(T(1)));
+            const auto v = svadd_x(all, VT::gather(mask, base, vidx), VT::dup(T(1)));
             VT::scatter(mask, const_cast<T*>(base), vidx, v);
 #else
             const auto v = VT::gather(mask, base, vidx);

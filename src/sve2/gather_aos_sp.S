@@ -31,9 +31,9 @@ gather_aos_sp:
     ld1w    {z0.s}, p0/z, [x0, z3.s, sxtw #2] // a[idx*snbytes + 0]  (x component)
 
 #ifndef ONLY_FIRST_DIMENSION
-    mov     z5.s, z3.s
+    mov     z5.d, z3.d
     add     z5.s, z5.s, #1                   // idx*snbytes + 1
-    mov     z6.s, z3.s
+    mov     z6.d, z3.d
     add     z6.s, z6.s, #2                   // idx*snbytes + 2
     ld1w    {z1.s}, p0/z, [x0, z5.s, sxtw #2] // y component
     ld1w    {z2.s}, p0/z, [x0, z6.s, sxtw #2] // z component
