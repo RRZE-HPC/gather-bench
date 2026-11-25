@@ -1,16 +1,18 @@
 # Supported: GCC, CLANG, ICX, ICC (toolchain files in make/include_<TAG>.mk)
-TAG ?= ICC
+TAG ?= GCC
 # Supported: avx2, avx512, sve
 ISA ?= avx512
 # Use likwid?
 ENABLE_LIKWID ?= false
 
-# asm: hand-written per-ISA assembly kernels (DP only, fixed unroll, no masking).
-# intrinsic: C++ intrinsics kernel, supports DATA_TYPE=SP, UNROLL, and the mask sweep.
+# asm: hand-written per-ISA assembly kernels (src/x86-64/<isa>, src/aarch64/sve2).
+# intrinsic: portable C++ intrinsics kernel (src/gather_intrinsic.cc); the only
+#            one supporting OP=scatter/rmw. Both support DATA_TYPE, UNROLL and the
+#            mask sweep for main.c/main-md.c; VARIANT=md-trace needs KERNEL=asm.
 KERNEL ?= asm
 # gather (default), scatter, or rmw (gather + add + scatter); scatter/rmw need KERNEL=intrinsic and avx512/sve.
 OP ?= gather
-# Unroll factor for the intrinsic kernel (1, 2, 4 or 8). Ignored by KERNEL=asm.
+# Unroll factor (1, 2, 4 or 8) for main.c/main-md.c; md-trace kernels use a fixed unroll.
 UNROLL ?= 4
 
 # SP or DP

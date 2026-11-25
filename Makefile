@@ -1,18 +1,25 @@
 #CONFIGURE BUILD SYSTEM
+# config.mk first: everything below depends on TAG/ISA/KERNEL/OP.
+include ./config.mk
+
+ifeq ($(filter $(strip $(KERNEL)),asm intrinsic),)
+    $(error Invalid KERNEL: $(KERNEL). Must be one of: asm, intrinsic)
+endif
+
 OP_SUFFIX  = $(if $(filter-out gather,$(strip $(OP))),-$(strip $(OP)))
-TARGET	   = gather-bench-$(TAG)$(OP_SUFFIX)
-BUILD_DIR  = ./build/$(TAG)-$(ISA)$(OP_SUFFIX)
+BUILD_NAME = $(strip $(TAG))-$(strip $(ISA))-$(strip $(KERNEL))$(OP_SUFFIX)
+TARGET	   = gather-bench-$(BUILD_NAME)
+BUILD_DIR  = ./build/$(BUILD_NAME)
 SRC_DIR	= ./src
 MAKE_DIR   = ./make
 ifeq ($(strip $(ISA)),sve)
-ISA_DIR	= ./src/sve2
+ISA_DIR	= ./src/aarch64/sve2
 else
-ISA_DIR	= ./src/x86-64/$(ISA)
+ISA_DIR	= ./src/x86-64/$(strip $(ISA))
 endif
 Q		 ?= @
 
 #DO NOT EDIT BELOW
-include ./config.mk
 include $(MAKE_DIR)/include_$(TAG).mk
 include $(MAKE_DIR)/include_LIKWID.mk
 INCLUDES  += -I./src/includes
@@ -21,12 +28,18 @@ VPATH	 = $(SRC_DIR) ${ISA_DIR}
 ASM	   = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.s,$(wildcard $(SRC_DIR)/*.c))
 ASM	  += $(patsubst $(SRC_DIR)/%.f90, $(BUILD_DIR)/%.s,$(wildcard $(SRC_DIR)/*.f90))
 OBJ	   = $(filter-out $(BUILD_DIR)/main%, $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.c)))
+# Only build the selected kernel backend: the intrinsic kernel (gather_intrinsic.cc)
+# for KERNEL=intrinsic, the per-ISA assembly kernels (ISA_DIR/*.S) for KERNEL=asm.
+ifeq ($(strip $(KERNEL)),intrinsic)
 OBJ	  += $(patsubst $(SRC_DIR)/%.cc, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.cc))
+endif
 OBJ	  += $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.cpp))
 OBJ	  += $(patsubst $(SRC_DIR)/%.f90, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.f90))
 OBJ	  += $(patsubst $(SRC_DIR)/%.F90, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.F90))
 OBJ	  += $(patsubst $(SRC_DIR)/%.s, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.s))
+ifeq ($(strip $(KERNEL)),asm)
 OBJ	  += $(patsubst $(ISA_DIR)/%.S, $(BUILD_DIR)/%.o,$(wildcard $(ISA_DIR)/*.S))
+endif
 CPPFLAGS := $(CPPFLAGS) $(DEFINES) $(INCLUDES) -DISA_$(ISA)
 
 ifneq ($(VARIANT),)
@@ -86,10 +99,16 @@ ifneq ($(strip $(OP)),gather)
     ifneq ($(strip $(KERNEL)),intrinsic)
         $(error OP=$(OP) requires KERNEL=intrinsic)
     endif
+    ifeq ($(strip $(ISA)),avx2)
+        $(error OP=$(OP) requires ISA=avx512 or ISA=sve; AVX2 has no scatter instruction)
+    endif
 endif
 
 ifeq ($(strip $(KERNEL)),intrinsic)
     CPPFLAGS += -DKERNEL_INTRINSIC
+    ifeq ($(strip $(VARIANT)),md-trace)
+        $(error VARIANT=md-trace requires KERNEL=asm; it calls the assembly md-trace kernels directly)
+    endif
     ifeq ($(strip $(PADDING)),true)
         $(error PADDING is not supported by KERNEL=intrinsic)
     endif

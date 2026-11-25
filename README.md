@@ -8,7 +8,7 @@ SVE2, and GPUs (CUDA/HIP).
 src/
   x86-64/avx2/     hand-written AVX2 gather kernels (.S)
   x86-64/avx512/   hand-written AVX-512 gather kernels (.S)
-  sve2/            hand-written ARM SVE2 gather kernels (.S) - UNVERIFIED,
+  aarch64/sve2/    hand-written ARM SVE2 gather kernels (.S) - UNVERIFIED,
                    no SVE hardware or cross-compiler was available to build
                    or run these; treat with extra scrutiny before relying on
                    the numbers.
@@ -19,25 +19,28 @@ make/
   include_<TAG>.mk   per-toolchain compiler/flags (GCC, CLANG, ICX, ICC)
   include_LIKWID.mk  LIKWID marker API settings (ENABLE_LIKWID=true)
 config.mk          default build knobs (all overridable on the command line)
-build/             object files, one directory per TAG/ISA/OP combination
+build/             object files, one directory per TAG/ISA/KERNEL/OP combination
 ```
 
 ## Building and running (CPU)
 
 ```
-make TAG=GCC ISA=avx2            # or ISA=avx512, ISA=sve
-./gather-bench-GCC -s 8 -f 2.5
-make TAG=GCC ISA=avx2 VARIANT=md
-./gather-bench-GCC-md -s 8 -f 2.5
-make TAG=ICX ISA=avx512          # Intel oneAPI icx/icpx (x86-64 only)
+make ISA=avx2                         # TAG=GCC KERNEL=asm by default
+./gather-bench-GCC-avx2-asm -s 8 -f 2.5
+make ISA=avx2 VARIANT=md
+./gather-bench-GCC-avx2-asm-md -s 8 -f 2.5
+make TAG=ICX ISA=avx512 KERNEL=intrinsic OP=rmw   # Intel oneAPI icx/icpx (x86-64 only)
+./gather-bench-ICX-avx512-intrinsic-rmw -s 8 -f 2.5
 ```
 
-Objects go to `build/<TAG>-<ISA>[-<OP>]/`; the binary stays in the
-repository root. Changing any compile-affecting knob (`KERNEL`, `DATA_TYPE`,
-`UNROLL`, ...) automatically rebuilds the objects in that directory, so
-reusing a build directory never links stale kernels. Note that binaries are
-named only by `TAG`/`OP`/variant, so building a different `ISA` or `KERNEL`
-overwrites the previous binary of the same name.
+Binaries are named `gather-bench-<TAG>-<ISA>-<KERNEL>[-<OP>][-<VARIANT>]`
+(the `-<OP>` part is omitted for the default `OP=gather`) and are placed in
+the repository root; objects go to the matching `build/<TAG>-<ISA>-<KERNEL>[-<OP>]/`.
+Only the selected kernel backend is compiled (`src/gather_intrinsic.cc` for
+`KERNEL=intrinsic`, the per-ISA `.S` files for `KERNEL=asm`). Knobs that are
+not part of the name (`DATA_TYPE`, `UNROLL`, `DATA_LAYOUT`, `TEST`, ...)
+still share a binary name, but changing any of them automatically recompiles
+the objects and relinks the binary, so a build never mixes stale kernels.
 
 Key `config.mk` / command-line knobs:
 

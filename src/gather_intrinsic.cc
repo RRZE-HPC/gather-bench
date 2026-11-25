@@ -1,8 +1,8 @@
 /*
  * Intrinsics-based gather kernel (KERNEL=intrinsic).
  *
- * Unlike the hand-written per-ISA assembly kernels (src/avx2, src/avx512,
- * src/sve), this is a single portable C++ source compiled once per ISA via
+ * Unlike the hand-written per-ISA assembly kernels (src/x86-64/avx2,
+ * src/x86-64/avx512, src/aarch64/sve2), this is a single portable C++ source compiled once per ISA via
  * -DISA_avx2 / -DISA_avx512 / -DISA_sve. It exists as a second, independently
  * selectable kernel implementation (KERNEL=asm vs. KERNEL=intrinsic) so the
  * two can be compared, and it is the only kernel that supports:
