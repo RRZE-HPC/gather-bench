@@ -141,7 +141,7 @@ extern void gather_soa_dp(real_t*, int*, int, real_t*, long int*, int);
 #   define MEM_TRACER_END                 fclose(mem_tracer_fp);
 #   define MEM_TRACE(addr, op)            fprintf(mem_tracer_fp, "%c: %p\n", op, (void *)(&(addr)));
 #else
-#   define MEM_TRACER_INIT
+#   define MEM_TRACER_INIT(...)
 #   define MEM_TRACER_END
 #   define MEM_TRACE(addr, op)
 #endif

@@ -45,3 +45,5 @@ gather_soa_dp:
     b.lt    1b
     ret
 .size gather_soa_dp, .-gather_soa_dp
+
+.section .note.GNU-stack,"",%progbits

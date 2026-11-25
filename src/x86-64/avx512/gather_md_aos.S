@@ -35,7 +35,7 @@ push r15
 vmovdqu ymm7, YMMWORD PTR .ymm_reg_mask.1[rip]
 mov r15, rdx
 xor rax, rax
-cmpq r15, 8
+cmp r15, 8
 jl .remainder_only
 .align 16
 1:
@@ -93,13 +93,13 @@ vmovupd  [r10 + rax * 8], zmm2
 #endif
 
 # TODO: see if this logic can be optimized
-addq rax, 8
-subq r15, 8
-cmpq r15, 8
+add rax, 8
+sub r15, 8
+cmp r15, 8
 jge 1b
 
 .remainder_only:
-cmpq r15, 0
+cmp r15, 0
 jle .end_func
 
 vpbroadcastd ymm6, r15d
@@ -134,7 +134,7 @@ lea r10, [rbx + r8  * 8]
 vmovupd  [r10  + rax * 8], zmm2
 #endif
 
-addq rax, r15
+add rax, r15
 
 .end_func:
 pop r15
@@ -148,3 +148,5 @@ mov  rsp, rbp
 pop rbp
 ret
 .size gather_md_aos, .-gather_md_aos
+
+.section .note.GNU-stack,"",%progbits

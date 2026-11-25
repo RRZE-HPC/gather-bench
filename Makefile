@@ -1,9 +1,9 @@
 #CONFIGURE BUILD SYSTEM
 OP_SUFFIX  = $(if $(filter-out gather,$(strip $(OP))),-$(strip $(OP)))
 TARGET	   = gather-bench-$(TAG)$(OP_SUFFIX)
-BUILD_DIR  = ./$(TAG)$(OP_SUFFIX)
+BUILD_DIR  = ./build/$(TAG)-$(ISA)$(OP_SUFFIX)
 SRC_DIR	= ./src
-MAKE_DIR   = ./
+MAKE_DIR   = ./make
 ifeq ($(strip $(ISA)),sve)
 ISA_DIR	= ./src/sve2
 else
@@ -12,7 +12,7 @@ endif
 Q		 ?= @
 
 #DO NOT EDIT BELOW
-include $(MAKE_DIR)/config.mk
+include ./config.mk
 include $(MAKE_DIR)/include_$(TAG).mk
 include $(MAKE_DIR)/include_LIKWID.mk
 INCLUDES  += -I./src/includes
@@ -104,52 +104,59 @@ ifeq ($(strip $(KERNEL)),intrinsic)
     endif
 endif
 
-${TARGET}: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main.c
+FLAGS_STAMP = $(BUILD_DIR)/.flags
+# Binaries are named by TAG/OP/VARIANT only, so a link stamp per binary name
+# forces a relink when the same name is built from another ISA/KERNEL/... config.
+LINK_STAMP  = ./build/.link-
+LINK_FLAGS  = $(BUILD_DIR) $(BUILD_FLAGS) $(LINKER) $(LFLAGS) $(LIBS)
+BUILD_FLAGS = $(CC) $(CXX) $(CPPFLAGS) $(CFLAGS) $(CXXFLAGS) $(ASFLAGS)
+
+${TARGET}: $(OBJ) $(SRC_DIR)/main.c $(LINK_STAMP)$(TARGET)
 	@echo "===>  LINKING  $(TARGET)"
 	$(Q)${LINKER} ${CPPFLAGS} ${LFLAGS} -o $(TARGET) $(SRC_DIR)/main.c $(OBJ) $(LIBS)
 
-${TARGET}-%: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main-%.c
+${TARGET}-%: $(OBJ) $(SRC_DIR)/main-%.c $(LINK_STAMP)$(TARGET)-%
 	@echo "===>  LINKING  $(TARGET)-$* "
 	$(Q)${LINKER} ${CPPFLAGS} ${LFLAGS} -o $(TARGET)-$* $(SRC_DIR)/main-$*.c $(OBJ) $(LIBS)
 
-asm:  $(BUILD_DIR) $(ASM)
+asm: $(ASM)
 
-$(BUILD_DIR)/%.o:  %.c
+$(BUILD_DIR)/%.o: %.c $(FLAGS_STAMP) | $(BUILD_DIR)
 	@echo "===>  COMPILE  $@"
 	$(Q)$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
 	$(Q)$(CC) $(CPPFLAGS) -MT $(@:.d=.o) -MM  $< > $(BUILD_DIR)/$*.d
 
-$(BUILD_DIR)/%.s:  %.c
+$(BUILD_DIR)/%.s: %.c $(FLAGS_STAMP) | $(BUILD_DIR)
 	@echo "===>  GENERATE ASM  $@"
 	$(Q)$(CC) -S $(CPPFLAGS) $(CFLAGS) $< -o $@
 
-$(BUILD_DIR)/%.s:  %.f90
+$(BUILD_DIR)/%.s: %.f90 $(FLAGS_STAMP) | $(BUILD_DIR)
 	@echo "===>  COMPILE  $@"
 	$(Q)$(FC) -S  $(FCFLAGS) $< -o $@
 
-$(BUILD_DIR)/%.o:  %.cc
+$(BUILD_DIR)/%.o: %.cc $(FLAGS_STAMP) | $(BUILD_DIR)
 	@echo "===>  COMPILE  $@"
 	$(Q)$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 	$(Q)$(CXX) $(CPPFLAGS) -MT $(@:.d=.o) -MM  $< > $(BUILD_DIR)/$*.d
 
-$(BUILD_DIR)/%.o:  %.cpp
+$(BUILD_DIR)/%.o: %.cpp $(FLAGS_STAMP) | $(BUILD_DIR)
 	@echo "===>  COMPILE  $@"
 	$(Q)$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 	$(Q)$(CXX) $(CPPFLAGS) -MT $(@:.d=.o) -MM  $< > $(BUILD_DIR)/$*.d
 
-$(BUILD_DIR)/%.o:  %.f90
+$(BUILD_DIR)/%.o: %.f90 $(FLAGS_STAMP) | $(BUILD_DIR)
 	@echo "===>  COMPILE  $@"
 	$(Q)$(FC) -c  $(FCFLAGS) $< -o $@
 
-$(BUILD_DIR)/%.o:  %.F90
+$(BUILD_DIR)/%.o: %.F90 $(FLAGS_STAMP) | $(BUILD_DIR)
 	@echo "===>  COMPILE  $@"
 	$(Q)$(FC) -c  $(CPPFLAGS)  $(FCFLAGS) $< -o $@
 
-$(BUILD_DIR)/%.o:  %.s
+$(BUILD_DIR)/%.o: %.s $(FLAGS_STAMP) | $(BUILD_DIR)
 	@echo "===>  ASSEMBLE  $@"
 	$(Q)$(AS)  $(ASFLAGS) $< -o $@
 
-$(BUILD_DIR)/%.o:  %.S
+$(BUILD_DIR)/%.o: %.S $(FLAGS_STAMP) | $(BUILD_DIR)
 	@echo "===>  ASSEMBLE  $@"
 	$(Q)$(CC) -c $(CPPFLAGS) $< -o $@
 
@@ -159,13 +166,24 @@ tags:
 
 
 $(BUILD_DIR):
-	@mkdir $(BUILD_DIR)
+	@mkdir -p $(BUILD_DIR)
+
+# Objects in BUILD_DIR are shared between KERNEL/DATA_TYPE/UNROLL/... settings,
+# so record the effective flags and force a rebuild whenever they change;
+# otherwise stale objects get silently linked against a freshly built main.
+$(FLAGS_STAMP): FORCE | $(BUILD_DIR)
+	@echo '$(BUILD_FLAGS)' | cmp -s - $@ || echo '$(BUILD_FLAGS)' > $@
+
+$(LINK_STAMP)%: FORCE | $(BUILD_DIR)
+	@echo '$(LINK_FLAGS)' | cmp -s - $@ || echo '$(LINK_FLAGS)' > $@
 
 ifeq ($(findstring $(MAKECMDGOALS),clean),)
 -include $(OBJ:.o=.d)
 endif
 
-.PHONY: clean distclean
+.PHONY: clean distclean asm tags FORCE
+.PRECIOUS: $(LINK_STAMP)%
+FORCE:
 
 clean:
 	@echo "===>  CLEAN"

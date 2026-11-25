@@ -48,3 +48,5 @@ gather_md_soa:
     mov     w0, w2                           // return numneighs[i] (matches x86 ABI convention)
     ret
 .size gather_md_soa, .-gather_md_soa
+
+.section .note.GNU-stack,"",%progbits

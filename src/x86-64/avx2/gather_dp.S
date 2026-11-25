@@ -88,8 +88,8 @@ counter = 0
     counter = counter + 1
 .endr
 
-addq rax, (4 * UNROLL)
-cmpq rax, rdx
+add rax, (4 * UNROLL)
+cmp rax, rdx
 jl 1b
 
 pop r15
@@ -101,3 +101,5 @@ mov  rsp, rbp
 pop rbp
 ret
 .size gather_dp, .-gather_dp
+
+.section .note.GNU-stack,"",%progbits

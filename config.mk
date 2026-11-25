@@ -1,4 +1,4 @@
-# Supported: GCC, CLANG, ICC
+# Supported: GCC, CLANG, ICX, ICC (toolchain files in make/include_<TAG>.mk)
 TAG ?= ICC
 # Supported: avx2, avx512, sve
 ISA ?= avx512

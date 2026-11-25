@@ -28,3 +28,5 @@ vbroadcastsd zmm5, xmm2
 
 ret
 .size load_soa, .-load_soa
+
+.section .note.GNU-stack,"",%progbits

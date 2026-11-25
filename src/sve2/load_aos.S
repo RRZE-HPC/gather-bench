@@ -13,3 +13,5 @@ load_aos:
     ld1rd   {z5.d}, p0/z, [x0, #16]
     ret
 .size load_aos, .-load_aos
+
+.section .note.GNU-stack,"",%progbits

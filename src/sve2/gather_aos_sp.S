@@ -54,3 +54,5 @@ gather_aos_sp:
     b.lt    1b
     ret
 .size gather_aos_sp, .-gather_aos_sp
+
+.section .note.GNU-stack,"",%progbits

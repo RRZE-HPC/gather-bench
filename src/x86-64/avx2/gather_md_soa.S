@@ -39,7 +39,7 @@ vmovdqu xmm9, XMMWORD PTR .iota_mask_soa[rip]
 vpcmpeqd ymm8, ymm8, ymm8
 mov r15, rdx
 xor rax, rax
-cmpq r15, 4
+cmp r15, 4
 jl .remainder_only
 .align 16
 1:
@@ -70,13 +70,13 @@ lea r10, [rbx + r8  * 8]
 vmovupd  [r10 + rax * 8], ymm2
 #endif
 
-addq rax, 4
-subq r15, 4
-cmpq r15, 4
+add rax, 4
+sub r15, 4
+cmp r15, 4
 jge 1b
 
 .remainder_only:
-cmpq r15, 0
+cmp r15, 0
 jle .end_func
 
 vmovd xmm10, r15d
@@ -108,7 +108,7 @@ lea r10, [rbx + r8  * 8]
 vmovupd  [r10 + rax * 8], ymm2
 #endif
 
-addq rax, r15
+add rax, r15
 
 .end_func:
 pop r15
@@ -122,3 +122,5 @@ mov  rsp, rbp
 pop rbp
 ret
 .size gather_md_soa, .-gather_md_soa
+
+.section .note.GNU-stack,"",%progbits

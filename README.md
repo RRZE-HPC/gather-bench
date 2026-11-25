@@ -15,6 +15,11 @@ src/
   cuda/            GPU (CUDA/HIP) benchmark, see below
   gather_intrinsic.cc   portable C++ intrinsics kernel (KERNEL=intrinsic)
   main.c, main-md.c, main-md-trace.c, allocate.c, timing.c, includes/
+make/
+  include_<TAG>.mk   per-toolchain compiler/flags (GCC, CLANG, ICX, ICC)
+  include_LIKWID.mk  LIKWID marker API settings (ENABLE_LIKWID=true)
+config.mk          default build knobs (all overridable on the command line)
+build/             object files, one directory per TAG/ISA/OP combination
 ```
 
 ## Building and running (CPU)
@@ -24,10 +29,20 @@ make TAG=GCC ISA=avx2            # or ISA=avx512, ISA=sve
 ./gather-bench-GCC -s 8 -f 2.5
 make TAG=GCC ISA=avx2 VARIANT=md
 ./gather-bench-GCC-md -s 8 -f 2.5
+make TAG=ICX ISA=avx512          # Intel oneAPI icx/icpx (x86-64 only)
 ```
+
+Objects go to `build/<TAG>-<ISA>[-<OP>]/`; the binary stays in the
+repository root. Changing any compile-affecting knob (`KERNEL`, `DATA_TYPE`,
+`UNROLL`, ...) automatically rebuilds the objects in that directory, so
+reusing a build directory never links stale kernels. Note that binaries are
+named only by `TAG`/`OP`/variant, so building a different `ISA` or `KERNEL`
+overwrites the previous binary of the same name.
 
 Key `config.mk` / command-line knobs:
 
+- `TAG` - toolchain: `GCC`, `CLANG`, `ICX` (Intel oneAPI), or `ICC`
+  (Intel classic, discontinued in oneAPI 2024+).
 - `ISA` - `avx2`, `avx512`, or `sve`.
 - `KERNEL` - `asm` (hand-written per-ISA assembly, default) or `intrinsic`
   (portable C++ kernel). Both support `DATA_TYPE=SP`, `UNROLL`, and masked

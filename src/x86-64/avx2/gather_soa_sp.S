@@ -100,8 +100,8 @@ counter = 0
     counter = counter + 1
 .endr
 
-addq rax, (8 * UNROLL)
-cmpq rax, rdx
+add rax, (8 * UNROLL)
+cmp rax, rdx
 jl 1b
 
 pop r15
@@ -116,3 +116,5 @@ mov  rsp, rbp
 pop rbp
 ret
 .size gather_soa_sp, .-gather_soa_sp
+
+.section .note.GNU-stack,"",%progbits

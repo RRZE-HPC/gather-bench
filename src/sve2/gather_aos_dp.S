@@ -54,3 +54,5 @@ gather_aos_dp:
     b.lt    1b
     ret
 .size gather_aos_dp, .-gather_aos_dp
+
+.section .note.GNU-stack,"",%progbits

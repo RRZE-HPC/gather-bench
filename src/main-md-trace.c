@@ -92,7 +92,7 @@
 #   define MEM_TRACER_END                 fclose(mem_tracer_fp);
 #   define MEM_TRACE(addr, op)            fprintf(mem_tracer_fp, "%c: %p\n", op, (void *)(&(addr)));
 #else
-#   define MEM_TRACER_INIT
+#   define MEM_TRACER_INIT(...)
 #   define MEM_TRACER_END
 #   define MEM_TRACE(addr, op)
 #endif
@@ -374,9 +374,9 @@ int main (int argc, char** argv) {
 
             for(int d = 0; d < gathered_dims; d++) {
                 #ifdef AOS
-                MEM_TRACE('R', a[i * snbytes + d])
+                MEM_TRACE(a[i * snbytes + d], 'R')
                 #else
-                MEM_TRACE('R', a[d * N + i])
+                MEM_TRACE(a[d * N + i], 'R')
                 #endif
             }
 
@@ -385,9 +385,9 @@ int main (int argc, char** argv) {
                     int k = neighbors[jj];
                     for(int d = 0; d < gathered_dims; d++) {
                         #ifdef AOS
-                        MEM_TRACE('R', a[k * snbytes + d])
+                        MEM_TRACE(a[k * snbytes + d], 'R')
                         #else
-                        MEM_TRACE('R', a[d * N + k])
+                        MEM_TRACE(a[d * N + k], 'R')
                         #endif
                     }
                 }

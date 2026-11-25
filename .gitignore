@@ -58,6 +58,4 @@ src/cuda/main.hip
 
 # CPU benchmark build artifacts
 gather-bench-*
-GCC/
-CLANG/
-ICC/
+build/

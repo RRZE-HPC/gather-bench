@@ -19,4 +19,4 @@ ASFLAGS  =
 LFLAGS   = $(OPENMP) $(ARCHFLAGS)
 DEFINES  = -D_GNU_SOURCE
 INCLUDES =
-LIBS     = -lstdc++
+LIBS     =

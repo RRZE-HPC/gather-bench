@@ -33,3 +33,5 @@ gather_dp:
     b.lt    1b
     ret
 .size gather_dp, .-gather_dp
+
+.section .note.GNU-stack,"",%progbits

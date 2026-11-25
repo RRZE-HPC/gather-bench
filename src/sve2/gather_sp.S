@@ -30,3 +30,5 @@ gather_sp:
     b.lt    1b
     ret
 .size gather_sp, .-gather_sp
+
+.section .note.GNU-stack,"",%progbits

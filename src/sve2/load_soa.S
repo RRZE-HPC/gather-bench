@@ -20,3 +20,5 @@ load_soa:
     ld1rd   {z5.d}, p0/z, [x7]
     ret
 .size load_soa, .-load_soa
+
+.section .note.GNU-stack,"",%progbits

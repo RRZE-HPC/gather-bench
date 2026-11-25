@@ -59,3 +59,5 @@ gather_md_aos:
     mov     w0, w2                           // return numneighs[i] (matches x86 ABI convention)
     ret
 .size gather_md_aos, .-gather_md_aos
+
+.section .note.GNU-stack,"",%progbits

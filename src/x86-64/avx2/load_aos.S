@@ -21,3 +21,5 @@ vbroadcastsd ymm5, xmm2
 
 ret
 .size load_aos, .-load_aos
+
+.section .note.GNU-stack,"",%progbits

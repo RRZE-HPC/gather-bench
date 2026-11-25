@@ -168,8 +168,8 @@ counter = 0
     counter = counter + 1
 .endr
 
-addq rax, (8 * UNROLL)
-cmpq rax, rdx
+add rax, (8 * UNROLL)
+cmp rax, rdx
 jl 1b
 
 #else // MEASURE_GATHER_CYCLES: unchanged single-chunk-per-iteration path, always full mask
@@ -248,8 +248,8 @@ lea r9,  [rbx + rdx * 8]
 vmovupd  [r9  + rax * 8], zmm2
 #endif
 
-addq rax, 8
-cmpq rax, rdx
+add rax, 8
+cmp rax, rdx
 jl 2b
 
 #endif // MEASURE_GATHER_CYCLES
@@ -266,3 +266,5 @@ mov  rsp, rbp
 pop rbp
 ret
 .size gather_aos_dp, .-gather_aos_dp
+
+.section .note.GNU-stack,"",%progbits
