@@ -196,11 +196,11 @@ $(FLAGS_STAMP): FORCE | $(BUILD_DIR)
 $(LINK_STAMP)%: FORCE | $(BUILD_DIR)
 	@echo '$(LINK_FLAGS)' | cmp -s - $@ || echo '$(LINK_FLAGS)' > $@
 
-ifeq ($(findstring $(MAKECMDGOALS),clean),)
+ifeq ($(filter clean distclean cleanall,$(MAKECMDGOALS)),)
 -include $(OBJ:.o=.d)
 endif
 
-.PHONY: clean distclean asm tags FORCE
+.PHONY: clean distclean cleanall asm tags FORCE
 .PRECIOUS: $(LINK_STAMP)%
 FORCE:
 
@@ -212,4 +212,11 @@ clean:
 distclean: clean
 	@echo "===>  DIST CLEAN"
 	@rm -f $(TARGET)
+	@rm -f tags
+
+# Remove every build directory and every binary variant (all TAG/ISA/KERNEL/OP/VARIANT).
+cleanall:
+	@echo "===>  CLEAN ALL"
+	@rm -rf ./build
+	@rm -f ./gather-bench-*
 	@rm -f tags

@@ -111,9 +111,12 @@ extern void gather_dp(real_t*, int*, int, real_t*, int);
 
 static void usage(const char* prog) {
     printf("X86/ARM gather instruction performance benchmark.\n\n");
-    printf("Usage: %s -s NUMBER -f REAL [OPTION]...\n\n", prog);
+    printf("Usage: %s -s NUMBER [OPTION]...\n\n", prog);
     printf("\t-s, --stride=NUMBER    stride between two successive indices (required).\n");
-    printf("\t-f, --freq=REAL        CPU frequency in GHz (required).\n");
+    printf("\t-f, --freq=REAL        nominal CPU frequency in GHz (optional). When given, the\n");
+    printf("\t                       cy/gather and cy/elem columns are added, computed as\n");
+    printf("\t                       wall time x REAL; they are only correct if the core really\n");
+    printf("\t                       runs at REAL GHz (no turbo/AVX-512 downclocking).\n");
     printf("\t-l, --line=NUMBER      cache line size in bytes (default 64).\n");
     printf("\t-u, --unique=NUMBER    number of distinct indices per %d-wide lane group\n", _VL_);
     printf("\t                       (1..%d, default %d = fully distinct/no duplicates).\n", _VL_, _VL_);
@@ -150,9 +153,13 @@ int main (int argc, char** argv) {
         }
     }
 
-    if (!have_stride || !have_freq) {
-        fprintf(stderr, "Error: --stride and --freq are required\n\n");
+    if (!have_stride) {
+        fprintf(stderr, "Error: --stride is required\n\n");
         usage(argv[0]);
+        return EXIT_FAILURE;
+    }
+    if (have_freq && !(freq > 0.0)) {
+        fprintf(stderr, "Error: --freq must be a positive number of GHz\n");
         return EXIT_FAILURE;
     }
     if (unique < 1 || unique > _VL_) {
@@ -165,8 +172,16 @@ int main (int argc, char** argv) {
     double E, S;
 
     printf("ISA,Kernel,DataType,Stride (elems),Frequency (GHz),Cache Line Size (B),Vector Width (elems),Cache Lines/Gather,Unique idx/group\n");
-    printf("%s,%s,%s,%d,%f,%d,%d,%lu,%d\n\n", ISA_STRING, KERNEL_STRING, REAL_STRING, stride, freq, cl_size, _VL_, cacheLinesPerGather, unique);
-    printf("%14s,%14s,%14s,%14s,%14s,%14s,%14s,%14s,%14s,%14s\n", "N", "Mask", "Size(kB)", "tot. time", "time/LUP(ms)", "GB/s", "cy/gather", "cy/elem", "GHz(meas)", "cy/it(meas)");
+    if (have_freq) {
+        printf("%s,%s,%s,%d,%f,%d,%d,%lu,%d\n\n", ISA_STRING, KERNEL_STRING, REAL_STRING, stride, freq, cl_size, _VL_, cacheLinesPerGather, unique);
+    } else {
+        printf("%s,%s,%s,%d,%s,%d,%d,%lu,%d\n\n", ISA_STRING, KERNEL_STRING, REAL_STRING, stride, "n/a", cl_size, _VL_, cacheLinesPerGather, unique);
+    }
+    printf("%14s,%14s,%14s,%14s,%14s,%14s,", "N", "Mask", "Size(kB)", "tot. time(s)", "time/LUP(us)", "GB/s");
+    if (have_freq) {
+        printf("%14s,%14s,", "cy/gather", "cy/elem");
+    }
+    printf("%14s,%14s\n", "GHz(meas)", "cy/it(meas)");
 
     const int have_cycles = cycles_init();
     if (!have_cycles) {
@@ -260,7 +275,11 @@ int main (int argc, char** argv) {
             const double cy_per_elem = time * freq / ((double) N * rep);
             const double ghz_meas = (cycles >= 0) ? cycles / time / 1e9 : 0.0 / 0.0;
             const double cy_per_it_meas = (cycles >= 0) ? (double) cycles * _VL_ / ((double) N * rep) : 0.0 / 0.0;
-            printf("%14d,%14d,%14.2f,%14.10f,%14.10f,%14.4f,%14.6f,%14.6f,%14.4f,%14.6f\n", N, active, size, time, time_per_it, gbps, cy_per_gather, cy_per_elem, ghz_meas, cy_per_it_meas);
+            printf("%14d,%14d,%14.2f,%14.10f,%14.10f,%14.4f,", N, active, size, time, time_per_it, gbps);
+            if (have_freq) {
+                printf("%14.6f,%14.6f,", cy_per_gather, cy_per_elem);
+            }
+            printf("%14.4f,%14.6f\n", ghz_meas, cy_per_it_meas);
         }
 
         free(a);

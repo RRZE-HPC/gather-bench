@@ -26,11 +26,11 @@ build/             object files, one directory per TAG/ISA/KERNEL/OP combination
 
 ```
 make ISA=avx2                         # TAG=GCC KERNEL=asm by default
-./gather-bench-GCC-avx2-asm -s 8 -f 2.5
+./gather-bench-GCC-avx2-asm -s 8
 make ISA=avx2 VARIANT=md
-./gather-bench-GCC-avx2-asm-md -s 8 -f 2.5
+./gather-bench-GCC-avx2-asm-md -s 8
 make TAG=ICX ISA=avx512 KERNEL=intrinsic OP=rmw   # Intel oneAPI icx/icpx (x86-64 only)
-./gather-bench-ICX-avx512-intrinsic-rmw -s 8 -f 2.5
+./gather-bench-ICX-avx512-intrinsic-rmw -s 8
 ```
 
 Binaries are named `gather-bench-<TAG>-<ISA>-<KERNEL>[-<OP>][-<VARIANT>]`
@@ -41,6 +41,10 @@ Only the selected kernel backend is compiled (`src/gather_intrinsic.cc` for
 not part of the name (`DATA_TYPE`, `UNROLL`, `DATA_LAYOUT`, `TEST`, ...)
 still share a binary name, but changing any of them automatically recompiles
 the objects and relinks the binary, so a build never mixes stale kernels.
+
+`make clean` removes the current configuration's build directory, `make
+distclean` also its binary, and `make cleanall` removes the whole `build/`
+directory and every `gather-bench-*` binary.
 
 Key `config.mk` / command-line knobs:
 
@@ -65,14 +69,20 @@ Key `config.mk` / command-line knobs:
   conflicts within a gather. Works identically with either `KERNEL`, since
   it's a data-generation concern, not a kernel concern.
 
-Besides the `-f`-based `cy/gather`/`cy/it` columns, `main.c` and `main-md.c`
-report `GHz(meas)` and `cy/it(meas)` (plus `cy/gath(meas)` for `main-md.c`),
-computed from unhalted core cycles counted with `perf_event_open` around the
-timed loop. One "it" is one SIMD iteration, i.e. VL elements (one gather in
-`main.c`, `dims` gathers in `main-md.c`). These columns are independent of
-`-f`, so they stay correct under turbo, AVX-512 downclocking or a CPU still
+`main.c` and `main-md.c` report `GHz(meas)` and `cy/it(meas)` (plus
+`cy/gath(meas)` for `main-md.c`), computed from unhalted core cycles counted
+with `perf_event_open` around the timed loop. One "it" is one SIMD iteration,
+i.e. VL elements (one gather in `main.c`, `dims` gathers in `main-md.c`).
+These columns stay correct under turbo, AVX-512 downclocking or a CPU still
 ramping up from a low power state. They require `perf_event_paranoid <= 2`
 and print `nan` otherwise; do not combine with `likwid-perfctr`.
+
+`-f GHz` is optional. Only when it is given are the wall-time-based cycle
+columns added (`cy/gather`, `cy/elem` in `main.c`; `cy/it`, `cy/gather`,
+`cy/elem` in `main-md.c`), computed as wall time x the given frequency. They
+match the measured columns only if the core actually runs at that frequency,
+so prefer the `(meas)` columns. `time/LUP(us)` is wall time per element in
+microseconds.
 
 Both `main.c` and `main-md.c` automatically sweep every mask value from 1 to
 VL active lanes per gather (an extra `Mask` column in the CSV output), using

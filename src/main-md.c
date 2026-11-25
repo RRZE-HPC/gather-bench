@@ -165,13 +165,15 @@ int main (int argc, char** argv) {
     int cl_size = 64;
     int opt = 0;
     int unique = _VL_;
-    double freq = 2.5;
+    double freq = 0.0;
+    int have_freq = 0;
     struct option long_opts[] = {
         {"stride", required_argument,   NULL,   's'},
         {"freq",   required_argument,   NULL,   'f'},
         {"line",   required_argument,   NULL,   'l'},
         {"unique", required_argument,   NULL,   'u'},
-        {"help",   no_argument,         NULL,   'h'}
+        {"help",   no_argument,         NULL,   'h'},
+        {NULL,     0,                   NULL,   0}
     };
 
     while((opt = getopt_long(argc, argv, "s:f:l:u:h", long_opts, NULL)) != -1) {
@@ -182,6 +184,7 @@ int main (int argc, char** argv) {
 
             case 'f':
                 freq = atof(optarg);
+                have_freq = 1;
                 break;
 
             case 'l':
@@ -199,7 +202,10 @@ int main (int argc, char** argv) {
                 printf("MD variant for gather benchmark.\n\n");
                 printf("Mandatory arguments to long options are also mandatory for short options.\n");
                 printf("\t-s, --stride=NUMBER   stride between two successive elements (default 1).\n");
-                printf("\t-f, --freq=REAL       CPU frequency in GHz (default 2.5).\n");
+                printf("\t-f, --freq=REAL       nominal CPU frequency in GHz (optional). When given, the\n");
+                printf("\t                      cy/it, cy/gather and cy/elem columns are added, computed\n");
+                printf("\t                      as wall time x REAL; only correct if the core really runs\n");
+                printf("\t                      at REAL GHz (no turbo/AVX-512 downclocking).\n");
                 printf("\t-l, --line=NUMBER     cache line size in bytes (default 64).\n");
                 printf("\t-u, --unique=NUMBER   distinct indices per %d-wide lane group (1..%d, default %d).\n", _VL_, _VL_, _VL_);
                 printf("\t-h, --help            display this help message.\n");
@@ -208,6 +214,10 @@ int main (int argc, char** argv) {
         }
     }
 
+    if (have_freq && !(freq > 0.0)) {
+        fprintf(stderr, "Error: --freq must be a positive number of GHz\n");
+        return EXIT_FAILURE;
+    }
     if (unique < 1 || unique > _VL_) {
         fprintf(stderr, "Error: --unique must be between 1 and %d\n", _VL_);
         return EXIT_FAILURE;
@@ -225,11 +235,19 @@ int main (int argc, char** argv) {
     double E, S;
 
     printf("ISA,Kernel,DataType,Layout,Stride,Dims,Frequency (GHz),Cache Line Size (B),Vector Width (e),Cache Lines/Gather,Unique idx/group\n");
-    printf("%s,%s,%s,%s,%d,%d,%f,%d,%d,%lu,%d\n\n", ISA_STRING, KERNEL_STRING, REAL_STRING, LAYOUT_STRING, stride, dims, freq, cl_size, _VL_, cacheLinesPerGather, unique);
+    if (have_freq) {
+        printf("%s,%s,%s,%s,%d,%d,%f,%d,%d,%lu,%d\n\n", ISA_STRING, KERNEL_STRING, REAL_STRING, LAYOUT_STRING, stride, dims, freq, cl_size, _VL_, cacheLinesPerGather, unique);
+    } else {
+        printf("%s,%s,%s,%s,%d,%d,%s,%d,%d,%lu,%d\n\n", ISA_STRING, KERNEL_STRING, REAL_STRING, LAYOUT_STRING, stride, dims, "n/a", cl_size, _VL_, cacheLinesPerGather, unique);
+    }
     printf("%14s,%14s,%14s,%14s,", "N", "Mask", "Size(kB)", "cut CLs");
 
 #ifndef MEASURE_GATHER_CYCLES
-    printf("%14s,%14s,%14s,%14s,%14s,%14s,%14s,%14s,%14s", "tot. time", "time/LUP(ms)", "GB/s", "cy/it", "cy/gather", "cy/elem", "GHz(meas)", "cy/it(meas)", "cy/gath(meas)");
+    printf("%14s,%14s,%14s,", "tot. time(s)", "time/LUP(us)", "GB/s");
+    if (have_freq) {
+        printf("%14s,%14s,%14s,", "cy/it", "cy/gather", "cy/elem");
+    }
+    printf("%14s,%14s,%14s", "GHz(meas)", "cy/it(meas)", "cy/gath(meas)");
 #else
 
 #ifdef ONLY_FIRST_DIMENSION
@@ -408,7 +426,11 @@ int main (int argc, char** argv) {
         const double ghz_meas = (core_cycles >= 0) ? core_cycles / time / 1e9 : 0.0 / 0.0;
         const double cy_per_it_meas = (core_cycles >= 0) ? (double) core_cycles * _VL_ / ((double) N * rep) : 0.0 / 0.0;
         const double cy_per_gather_meas = cy_per_it_meas / gathered_dims;
-        printf("%14.10f,%14.10f,%14.4f,%14.6f,%14.6f,%14.6f,%14.4f,%14.6f,%14.6f", time, time_per_it, gbps, cy_per_it, cy_per_gather, cy_per_elem, ghz_meas, cy_per_it_meas, cy_per_gather_meas);
+        printf("%14.10f,%14.10f,%14.4f,", time, time_per_it, gbps);
+        if (have_freq) {
+            printf("%14.6f,%14.6f,%14.6f,", cy_per_it, cy_per_gather, cy_per_elem);
+        }
+        printf("%14.4f,%14.6f,%14.6f", ghz_meas, cy_per_it_meas, cy_per_gather_meas);
 #else
         double cy_min[dims];
         double cy_max[dims];
